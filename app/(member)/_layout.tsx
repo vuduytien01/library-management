@@ -1,10 +1,11 @@
 import { Ionicons } from "@expo/vector-icons";
+import { useAccountStatus } from "../../src/hooks/useAccountStatus";
 import { Redirect, Tabs, useRouter } from "expo-router";
 import { useEffect } from "react";
-import { View } from "react-native";
+import { View, Platform } from "react-native";
+import { BottomTabBar } from "@react-navigation/bottom-tabs";
 import ErrorBoundary from "../../src/components/ErrorBoundary";
 import { notificationService } from "../../src/core/notifications";
-import { BiblioAI } from "../../src/features/ai/BiblioAI";
 import { useAuthStore } from "../../src/store/useAuthStore";
 
 import { useSegments } from "expo-router";
@@ -15,6 +16,8 @@ export default function MemberLayout() {
   const session = useAuthStore((state) => state.session);
   const router = useRouter();
   const { t } = useTranslation();
+
+
   const segments = useSegments();
   const isTabBarVisible = useTabBarStore((state) => state.isVisible);
 
@@ -51,15 +54,33 @@ export default function MemberLayout() {
     }
   }, [session?.user?.id]);
 
-  if (!session) {
-    return <Redirect href="/(auth)/login" />;
-  }
-
   return (
     <ErrorBoundary>
       <View style={{ flex: 1 }}>
+        {Platform.OS === 'web' && (
+          <style>{`
+            .member-taskbar-container {
+              position: absolute;
+              bottom: 0;
+              left: 0;
+              right: 0;
+              transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.4s ease;
+              transform: translateY(calc(100% - 14px));
+              opacity: 0.4;
+              z-index: 100;
+            }
+            .member-taskbar-container:hover {
+              transform: translateY(0);
+              opacity: 1;
+            }
+          `}</style>
+        )}
         <Tabs
-          key={t('tabs.home')}
+          tabBar={(props) => (
+            <View className={Platform.OS === 'web' ? "member-taskbar-container" : ""}>
+              <BottomTabBar {...props} />
+            </View>
+          )}
           screenOptions={{
             headerShown: false,
             tabBarStyle: {
@@ -74,15 +95,12 @@ export default function MemberLayout() {
               overflow: "hidden",
               height: isMainScreen ? 65 : 65.1,
               paddingBottom: 10,
-              transform:
-                isMainScreen || isTabBarVisible
-                  ? [{ translateY: 0 }]
-                  : [{ translateY: 65 }],
-              opacity: isMainScreen || isTabBarVisible ? 1 : 0,
+              transform: Platform.OS === 'web' ? [] : (isMainScreen || isTabBarVisible ? [{ translateY: 0 }] : [{ translateY: 65 }]),
+              opacity: Platform.OS === 'web' ? 1 : (isMainScreen || isTabBarVisible ? 1 : 0),
             },
             tabBarItemStyle: {
-              borderRightWidth: 0,
-              borderRightColor: "transparent",
+              borderRightWidth: 1,
+              borderRightColor: "rgba(255, 255, 255, 0.08)",
               height: "100%",
             },
             tabBarActiveTintColor: "#4F8EF7",
@@ -149,6 +167,8 @@ export default function MemberLayout() {
           />
 
           {/* Hidden screens from Tab Bar */}
+          <Tabs.Screen name="audiobooks/[id]" options={{ href: null }} />
+          <Tabs.Screen name="audiobooks/index" options={{ href: null }} />
           <Tabs.Screen name="achievements" options={{ href: null }} />
           <Tabs.Screen name="ai-chat" options={{ href: null }} />
           <Tabs.Screen name="analytics" options={{ href: null }} />
@@ -161,7 +181,6 @@ export default function MemberLayout() {
           <Tabs.Screen name="club/index" options={{ href: null }} />
           <Tabs.Screen name="club/[id]" options={{ href: null }} />
         </Tabs>
-        <BiblioAI />
       </View>
     </ErrorBoundary>
   );

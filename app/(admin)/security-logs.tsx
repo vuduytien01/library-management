@@ -47,8 +47,8 @@ export default function SecurityLogScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>{t('analytics.title')} - Security</Text>
-        <Text style={styles.subtitle}>Enterprise Audit Trail</Text>
+        <Text style={styles.title}>{t('tabs.security_logs')}</Text>
+        <Text style={styles.subtitle}>{t('admin.audit_logs_desc')}</Text>
       </View>
 
       <FlatList
@@ -66,14 +66,14 @@ export default function SecurityLogScreen() {
             </View>
 
             <Text style={styles.actorText}>
-              By: <Text style={styles.actorName}>{item.actor?.fullName || 'System'}</Text> 
+              {t('admin.performer')}: <Text style={styles.actorName}>{item.actor?.fullName || t('admin.system')}</Text> 
               <Text style={styles.roleTag}> ({item.actor?.role})</Text>
             </Text>
 
             <View style={[styles.severityBar, { backgroundColor: getSeverityColor(item.severity) }]} />
             
             {item.target_id && (
-              <Text style={styles.targetText}>Target: {item.target_id}</Text>
+              <Text style={styles.targetText}>{t('admin.record_id')}: {item.target_id}</Text>
             )}
             
             {Object.keys(item.metadata).length > 0 && (

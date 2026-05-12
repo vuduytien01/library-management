@@ -85,9 +85,9 @@ export default function LibrarianDashboard() {
   const { data: allBorrows } = borrows.listAll();
 
   // Accurate aggregates
-  const totalCopies = allBooks?.reduce((sum, b) => sum + (b.total_copies || 0), 0) || 0;
-  const activeBorrows = allBorrows?.filter(b => b.status === 'BORROWED').length || 0;
-  const pendingApprovals = allBorrows?.filter(b => b.status === 'PENDING').length || 0;
+  const totalCopies = allBooks?.reduce((acc: number, b: any) => acc + (b.total_copies || 0), 0) || 0;
+  const activeBorrows = allBorrows?.filter((b: any) => b.status === 'BORROWED').length || 0;
+  const pendingApprovals = allBorrows?.filter((b: any) => b.status === 'PENDING').length || 0;
   
   // Làn 3: Operational Excellence & Logistics 2.0
   const [suggestions, setSuggestions] = React.useState<RedistributionSuggestion[]>([]);
@@ -105,8 +105,8 @@ export default function LibrarianDashboard() {
     }
   };
 
-  const highDemandBooks = allBooks?.filter(book => {
-    const borrowCount = allBorrows?.filter(b => b.isbn === book.isbn).length || 0;
+  const highDemandBooks = allBooks?.filter((book: any) => {
+    const borrowCount = allBorrows?.filter((b: any) => b.isbn === book.isbn).length || 0;
     return borrowCount >= 3; // Simple heuristic: 3+ borrows = High Demand
   }).slice(0, 3) || [];
   const [duplicateCount, setDuplicateCount] = React.useState(0);

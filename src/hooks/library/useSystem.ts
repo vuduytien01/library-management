@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
 import { supabase } from '../../api/supabase';
-import { membersService } from '../../features/members/members.service';
+import { membersService } from '../../features/members/member-service';
 
 export function useSystem() {
   const queryClient = useQueryClient();
@@ -19,14 +19,19 @@ export function useSystem() {
     });
   }, []);
 
-  const saveMetadataSettings = async (settings: Record<string, boolean>) => {
+  const saveMetadataSettings = useCallback(async (settings: Record<string, boolean>) => {
     await AsyncStorage.setItem('metadata_display_settings', JSON.stringify(settings));
     setVisibleFields(settings);
-  };
+  }, []);
 
   // --- Connectivity ---
   const [isOnline, setIsOnline] = useState<boolean | null>(true);
   const [isSyncing, setIsSyncing] = useState(false);
+
+  const handleSync = useCallback(async () => {
+    setIsSyncing(true);
+    try { await membersService.processQueue(); } finally { setIsSyncing(false); }
+  }, []);
 
   useEffect(() => {
     const unsubscribe = NetInfo.addEventListener(state => {
@@ -35,19 +40,14 @@ export function useSystem() {
       setIsOnline(online);
     });
     return () => unsubscribe();
-  }, [isOnline]);
+  }, [isOnline, handleSync]);
 
-  const handleSync = async () => {
-    setIsSyncing(true);
-    try { await membersService.processQueue(); } finally { setIsSyncing(false); }
-  };
-
-  const getConfig = () => useQuery({
+  const configQuery = useQuery({
     queryKey: ['system_config'],
     queryFn: () => membersService.getSystemConfig(),
   });
 
-  const getBroadcasts = () => useQuery({
+  const broadcastsQuery = useQuery({
     queryKey: ['broadcasts'],
     queryFn: async () => {
       const { data, error } = await supabase.from('broadcasts').select('*').eq('active', true).order('created_at', { ascending: false });
@@ -56,7 +56,7 @@ export function useSystem() {
     }
   });
 
-  const getReadingRoomStatus = () => useQuery({
+  const readingRoomQuery = useQuery({
     queryKey: ['reading_room'],
     queryFn: async () => {
       const { data, error } = await supabase.from('reading_room_status').select('*').single();
@@ -65,11 +65,20 @@ export function useSystem() {
     }
   });
 
-  return { 
-    config: getConfig, 
-    broadcasts: getBroadcasts, 
-    readingRoom: getReadingRoomStatus,
-    metadata: { visibleFields, save: saveMetadataSettings },
-    connectivity: { isOnline, isSyncing, triggerSync: handleSync }
-  };
+  return useMemo(() => {
+    const wrap = (q: any) => () => q;
+    return { 
+      config: wrap(configQuery), 
+      broadcasts: wrap(broadcastsQuery), 
+      readingRoom: wrap(readingRoomQuery),
+      metadata: { visibleFields, save: saveMetadataSettings },
+      connectivity: { isOnline, isSyncing, triggerSync: handleSync }
+    };
+  }, [
+    configQuery.data, configQuery.status,
+    broadcastsQuery.data, broadcastsQuery.status,
+    readingRoomQuery.data, readingRoomQuery.status,
+    visibleFields, saveMetadataSettings, isOnline, isSyncing, handleSync
+  ]);
 }
+

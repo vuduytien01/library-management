@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { membersService } from '../../features/members/members.service';
+import { membersService } from '../../features/members/member-service';
 
 export function useConfig() {
   const queryClient = useQueryClient();

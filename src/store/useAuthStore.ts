@@ -2,7 +2,7 @@ import { Session } from "@supabase/supabase-js";
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
 import { supabase } from "../api/supabase";
-import { membersService } from "../features/members/members.service";
+import { persistence } from "../core/persistence";
 
 export type UserRole = "MEMBER" | "LIBRARIAN" | "ADMIN" | null;
 
@@ -20,13 +20,17 @@ export interface Profile {
   lock_reason: string | null;
   locale: string | null;
   email?: string | null;
+  is_super_admin?: boolean;
+  membershipType: "BASIC" | "PLATINUM";
 }
+
 
 export interface AuthState {
   session: Session | null;
   profile: Profile | null;
   loading: boolean;
   initialized: boolean;
+  i18nInitialized: boolean;
 }
 
 export interface AuthActions {
@@ -37,6 +41,7 @@ export interface AuthActions {
   updateLocale: (locale: string) => void;
   logout: () => Promise<void>;
   forceInitialize: () => void;
+  setI18nInitialized: (val: boolean) => void;
 }
 
 export type AuthStore = AuthState & AuthActions;
@@ -47,20 +52,37 @@ export const useAuthStore = create<AuthStore>()(
     profile: null,
     loading: false,
     initialized: false,
+    i18nInitialized: false,
+
+    setI18nInitialized: (val) => {
+      if (get().i18nInitialized === val) return;
+      set({ i18nInitialized: val });
+    },
 
     setSession: async (session) => {
-      if (session?.user) {
-        set({ session, loading: true });
-        // Don't await here to allow initialized: true to be set faster if cache hits
-        get().fetchProfile(session.user.id);
-      } else {
-        set({
-          session: null,
-          profile: null,
-          loading: false,
-          initialized: true,
-        });
+      const state = get();
+      const isSameUser = session?.user?.id === state.session?.user?.id;
+      const isSamePresence = !!session === !!state.session;
+      
+      // If session is the same and we're already initialized, skip
+      if (isSameUser && isSamePresence && state.initialized) return;
+
+      if (!session) {
+        if (state.session !== null || state.profile !== null || !state.initialized) {
+          set({ session: null, profile: null, loading: false, initialized: true });
+        }
+        return;
       }
+
+      // Only set loading if we are NOT already initialized (avoid flickering on refresh)
+      const needsLoading = !state.initialized && !state.loading;
+      if (needsLoading || state.session?.user?.id !== session.user.id) {
+        set({ session, loading: needsLoading });
+      } else {
+        set({ session });
+      }
+
+      await get().fetchProfile(session.user.id);
     },
 
     updateAvatar: (url: string) => {
@@ -68,7 +90,7 @@ export const useAuthStore = create<AuthStore>()(
       if (current) {
         const updated = { ...current, avatarUrl: url };
         set({ profile: updated });
-        membersService.saveProfile(updated);
+        persistence.saveProfile(updated);
       }
     },
 
@@ -77,138 +99,89 @@ export const useAuthStore = create<AuthStore>()(
       if (current) {
         const updated = { ...current, ...data };
         set({ profile: updated });
-        membersService.saveProfile(updated);
-        // Sync with DB
+        persistence.saveProfile(updated);
         supabase.from('profiles').update(data).eq('id', current.id).then();
       }
     },
 
     updateLocale: (locale: string) => {
       const current = get().profile;
-      if (current) {
+      if (current && current.locale !== locale) {
         get().updateProfile({ locale });
       }
     },
 
     fetchProfile: async (userId) => {
-      // 1. Immediate initialization from cache if available
-      const cached = await membersService.getProfile();
-      if (cached && cached.id === userId) {
-        set({ profile: cached, initialized: true, loading: false });
-      }
-
       try {
+        const cached = await persistence.getProfile();
         const currentSession = get().session;
-        const metadata = currentSession?.user?.user_metadata || {};
         
-        // 1. Role derivation logic
+        const metadata = currentSession?.user?.user_metadata || {};
         const regCode = String(metadata.registration_code || "").toUpperCase();
         let derivedRole: UserRole = "MEMBER";
-        
         if (regCode === "LIB_SECRET_2026" || userId === '362c0bbd-3649-497f-9864-7ae9d60aa5f2') {
           derivedRole = "LIBRARIAN";
         } else if (regCode === "ADMIN_SECRET_2026") {
           derivedRole = "ADMIN";
         }
 
-        const fallbackName = metadata.full_name || (derivedRole === 'LIBRARIAN' ? 'Head Librarian' : 'Member User');
-        const fallbackAvatar = metadata.avatar_url || null;
+        const fallbackProfile: Profile = {
+          id: userId,
+          fullName: metadata.full_name || (derivedRole === 'LIBRARIAN' ? 'Head Librarian' : 'Member User'),
+          role: derivedRole,
+          avatarUrl: metadata.avatar_url || null,
+          bio: null,
+          favoriteGenres: [],
+          xp: 0,
+          level: 1,
+          is_locked: false,
+          lock_reason: null,
+          locale: 'vi',
+          email: currentSession?.user?.email,
+          membershipType: metadata.membership_type === "PLATINUM" ? "PLATINUM" : (metadata.level >= 5 ? "PLATINUM" : "BASIC"),
+        };
 
-        // 2. Fetch from DB
-        const { data, error, status } = await supabase
+
+        const { data, error } = await supabase
           .from("profiles")
           .select("*, fullName:full_name, avatarUrl:avatar_url, favoriteGenres:favorite_genres, locale")
           .eq("id", userId)
           .single();
 
+        let nextProfile: Profile;
         if (error) {
-          const message = String(error?.message || "").toLowerCase();
-          const code = String((error as any)?.code || "");
-          const isNotFound = code === "PGRST116" || status === 406 || status === 404;
+          nextProfile = (cached && cached.id === userId) ? cached : fallbackProfile;
+        } else {
+          nextProfile = {
+            ...data,
+            role: data.role as UserRole,
+            favoriteGenres: data.favoriteGenres || [],
+            email: currentSession?.user?.email,
+            locale: data.locale || 'vi',
+            membershipType: data.membership_type || (data.level >= 5 ? "PLATINUM" : "BASIC")
+          };
 
-          if (isNotFound) {
-            console.log("[AuthStore] Profile missing. Attempting auto-creation...");
-            
-            // Try to create in DB
-            const { data: newUser, error: insertError } = await supabase
-              .from("profiles")
-              .insert({ id: userId, full_name: fallbackName, role: derivedRole, avatar_url: fallbackAvatar })
-              .select("*")
-              .single();
+        }
 
-            if (!insertError && newUser) {
-              set({
-                profile: { 
-                  ...newUser,
-                  fullName: newUser.full_name,
-                  avatarUrl: newUser.avatar_url,
-                  favoriteGenres: newUser.favorite_genres || [],
-                  role: newUser.role as UserRole,
-                  email: currentSession?.user?.email
-                },
-              });
-              return;
-            } else {
-              // LOCAL FALLBACK: Even if DB insert fails (e.g. RLS 403), use derived state
-              console.warn("[AuthStore] DB restricted. Using metadata fallback.", insertError?.message);
-              set({
-                profile: { 
-                  id: userId, 
-                  fullName: fallbackName, 
-                  role: derivedRole, 
-                  avatarUrl: fallbackAvatar,
-                  bio: null,
-                  favoriteGenres: [],
-                  xp: 0,
-                  level: 1,
-                  badges: [],
-                  is_locked: false,
-                  lock_reason: null,
-                  locale: 'vi',
-                  email: currentSession?.user?.email
-                },
-              });
-              return;
-            }
-          }
-          
-          console.error("[AuthStore] fetchProfile query error:", error);
-          // Still fallback to metadata if it's a generic query error
-          set({ profile: { 
-            id: userId, 
-            fullName: fallbackName, 
-            role: derivedRole, 
-            avatarUrl: fallbackAvatar,
-            bio: null,
-            favoriteGenres: [],
-            xp: 0,
-            level: 1,
-            badges: [],
-            is_locked: false,
-            lock_reason: null,
-            locale: 'vi',
-            email: currentSession?.user?.email
-          } });
-        } else if (data) {
-          const profile = { 
-              ...data,
-              favoriteGenres: data.favoriteGenres || [],
-              role: data.role as UserRole,
-              email: currentSession?.user?.email
-            };
-          set({ profile });
-          membersService.saveProfile(profile);
+        const current = get();
+        const hasProfileChange = !current.profile || 
+          current.profile.id !== nextProfile.id || 
+          current.profile.role !== nextProfile.role || 
+          current.profile.locale !== nextProfile.locale;
+
+        if (hasProfileChange || !current.initialized) {
+          set({ profile: nextProfile, loading: false, initialized: true });
+          persistence.saveProfile(nextProfile);
         }
       } catch (error) {
-        console.error("[AuthStore] fetchProfile unexpected error:", error);
-      } finally {
         set({ loading: false, initialized: true });
       }
     },
 
     forceInitialize: () => {
-      if (!get().initialized) {
-        set({ initialized: true, loading: false });
+      const state = get();
+      if (!state.initialized || !state.i18nInitialized) {
+        set({ initialized: true, loading: false, i18nInitialized: true });
       }
     },
 
@@ -218,7 +191,7 @@ export const useAuthStore = create<AuthStore>()(
       } catch (err) {
         console.error("[AuthStore] Logout error:", err);
       } finally {
-        membersService.clearAll();
+        persistence.clearAllAuth();
         set({ session: null, profile: null, loading: false, initialized: true });
       }
     },

@@ -32,6 +32,22 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
+  // Auto-redirect if already logged in
+  const session = useAuthStore((state) => state.session);
+  const profile = useAuthStore((state) => state.profile);
+
+  React.useEffect(() => {
+    if (session && profile) {
+      if (profile.role === "ADMIN") {
+        router.replace("/(admin)");
+      } else if (profile.role === "LIBRARIAN") {
+        router.replace("/(librarian)");
+      } else {
+        router.replace("/(member)");
+      }
+    }
+  }, [session, profile]);
+
   const handleLogin = async () => {
     if (!email || !password) {
       Alert.alert(

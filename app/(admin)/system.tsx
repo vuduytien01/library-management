@@ -17,31 +17,39 @@ import {
 import { useTranslation } from 'react-i18next';
 import { supabase } from '@/src/api/supabase';
 import { adminService } from '@/src/features/admin/admin.service';
-import { SecurityAuditResult } from '@/src/features/admin/admin.types';
+import { SecurityAuditResult, UserRole } from '@/src/features/admin/admin.types';
 import { useAuthStore } from '@/src/store/useAuthStore';
 import { useRouter } from 'expo-router';
+import { useUndoStore } from '@/src/store/useUndoStore';
 
 export default function AdminSystem() {
   const router = useRouter();
   const { t } = useTranslation();
-  const profile = useAuthStore((state) => state.profile);
+  const { profile } = useAuthStore();
+  const { queueAction } = useUndoStore();
   const [showAddModal, setShowAddModal] = React.useState(false);
   const [isCreating, setIsCreating] = React.useState(false);
   const [newUser, setNewUser] = React.useState({
     email: '',
     password: '',
     fullName: '',
-    role: 'MEMBER',
+    role: 'MEMBER' as UserRole,
   });
 
   const [showAIEnrichModal, setShowAIEnrichModal] = React.useState(false);
   const [isEnriching, setIsEnriching] = React.useState(false);
+  const [enrichProgress, setEnrichProgress] = React.useState({
+    processed: 0,
+    success: 0,
+    failed: 0,
+    remaining: true
+  });
 
   const [isAuditing, setIsAuditing] = React.useState(false);
-  const [auditResult, setAuditResult] =
-    React.useState<SecurityAuditResult | null>(null);
+  const [auditResult, setAuditResult] = React.useState<SecurityAuditResult | null>(null);
+  const [users, setUsers] = React.useState<any[]>([]);
 
-  const { data: stats } = useQuery({
+  const { data: statsData, refetch } = useQuery({
     queryKey: ['system_stats'],
     queryFn: async () => {
       const startTime = Date.now();
@@ -85,11 +93,15 @@ export default function AdminSystem() {
     refetchInterval: 30000, // Refresh every 30 seconds
   });
 
-  const { data: users, refetch: refetchUsers } = useQuery({
+  const refetchStats = refetch;
+
+  const { data: fetchedUsers, refetch: refetchUsers } = useQuery({
     queryKey: ['admin_users'],
     queryFn: async () => {
       try {
-        return await adminService.listUsers();
+        const data = await adminService.listUsers();
+        setUsers(data);
+        return data;
       } catch (err) {
         console.error('Error fetching users:', err);
         return [];
@@ -116,22 +128,52 @@ export default function AdminSystem() {
     }
   };
 
-  const handleUpdateUser = async (userId: string, updates: any) => {
-    try {
-      await adminService.updateUser(userId, updates);
-      refetchUsers();
-    } catch (error: any) {
-      Alert.alert(t('common.error'), error.message);
-    }
+  const handleUpdateUser = (userId: string, updates: any, userName?: string) => {
+    const previousUsers = [...users];
+    
+    // Optimistic update
+    setUsers(prev => prev.map(u => u.id === userId ? { ...u, ...updates } : u));
+
+    queueAction({
+      message: updates.isLocked !== undefined 
+        ? (updates.isLocked ? t("admin.lock_pending", { name: userName || userId }) : t("admin.unlock_pending", { name: userName || userId }))
+        : t("librarian.user_updated_pending", { name: userName || userId }),
+      onCommit: async () => {
+        try {
+          await adminService.updateUser(userId, updates);
+          refetchUsers();
+        } catch (error: any) {
+          setUsers(previousUsers);
+          Alert.alert(t('common.error'), error.message);
+        }
+      },
+      onUndo: () => {
+        setUsers(previousUsers);
+      }
+    });
   };
 
-  const handleDeleteUser = async (userId: string) => {
-    try {
-      await adminService.deleteUser(userId);
-      refetchUsers();
-    } catch (error: any) {
-      Alert.alert(t('common.error'), error.message);
-    }
+  const handleDeleteUser = (userId: string, userName?: string) => {
+    const previousUsers = [...users];
+    
+    // Optimistic update
+    setUsers(prev => prev.filter(u => u.id !== userId));
+
+    queueAction({
+      message: t("admin.user_deletion_pending", { name: userName || userId }),
+      onCommit: async () => {
+        try {
+          await adminService.deleteUser(userId);
+          refetchUsers();
+        } catch (error: any) {
+          setUsers(previousUsers);
+          Alert.alert(t('common.error'), error.message);
+        }
+      },
+      onUndo: () => {
+        setUsers(previousUsers);
+      }
+    });
   };
 
   const handleRunSecurityAudit = async () => {
@@ -147,14 +189,42 @@ export default function AdminSystem() {
   };
 
   const handleConfirmAIEnrich = async () => {
-    setIsEnriching(true);
     try {
-      const data = await adminService.backfillEmbeddings();
+      setIsEnriching(true);
+      setEnrichProgress({ processed: 0, success: 0, failed: 0, remaining: true });
+      
+      let hasMore = true;
+      let totalProcessed = 0;
+      let totalSuccess = 0;
+      let totalFailed = 0;
+
+      while (hasMore) {
+        const result = await adminService.backfillEmbeddings();
+        
+        totalProcessed += result.processed || 0;
+        totalSuccess += result.updated || 0;
+        totalFailed += result.failed || 0;
+        
+        setEnrichProgress({
+          processed: totalProcessed,
+          success: totalSuccess,
+          failed: totalFailed,
+          remaining: result.remaining !== 'All pending books processed.'
+        });
+
+        if (result.remaining === 'All pending books processed.' || result.processed === 0) {
+          hasMore = false;
+        }
+      }
+
+      Alert.alert(
+        t('common.success'), 
+        `${t('admin.ai_enrich_complete')}: ${totalSuccess} ${t('admin.books_processed')}`
+      );
+      refetchStats();
       setShowAIEnrichModal(false);
-      Alert.alert(t('common.success'), `${t('common.done')}: ${data.updated}. ${t('common.available')}: ${data.remaining}`);
     } catch (err: any) {
-      setShowAIEnrichModal(false);
-      Alert.alert(t('common.error'), err.message);
+      Alert.alert(t('common.error'), err.message || t('common.error_occurred'));
     } finally {
       setIsEnriching(false);
     }
@@ -214,7 +284,7 @@ export default function AdminSystem() {
       <View style={styles.header}>
         <View style={styles.headerTextContainer}>
           <Text style={styles.title} accessibilityRole="header">
-            {t('admin.system')}
+            {t('tabs.system')}
           </Text>
           <Text style={styles.subtitle}>
             {t('admin.system_desc')}
@@ -236,28 +306,28 @@ export default function AdminSystem() {
         <View style={styles.monitorGrid}>
           <MonitorWidget
             label={t('admin.api_status')}
-            value={stats?.apiStatus === 'Healthy' ? t('admin.status_online') : (stats?.apiStatus || '---')}
+            value={statsData?.apiStatus === 'Healthy' ? t('admin.status_online') : (statsData?.apiStatus || '---')}
             icon="pulse"
             color="#10B981"
           />
           <MonitorWidget
             label={t('admin.db_latency')}
-            value={`${stats?.latency || 0}ms`}
+            value={`${statsData?.latency || 0}ms`}
             icon="speedometer"
             color={
-              stats?.latency && stats.latency > 500 ? '#EF4444' : '#4F8EF7'
+              statsData?.latency && statsData.latency > 500 ? '#EF4444' : '#4F8EF7'
             }
           />
           <MonitorWidget
             label={t('admin.storage')}
-            value={`${stats?.storage?.used || 0}GB / ${stats?.storage?.total || 0}GB`}
+            value={`${statsData?.storage?.used || 0}GB / ${statsData?.storage?.total || 0}GB`}
             icon="cloud-upload"
             color="#A855F7"
-            progress={stats?.storage?.percentage}
+            progress={statsData?.storage?.percentage}
           />
           <MonitorWidget
             label={t('admin.uptime')}
-            value={stats?.uptime || '---'}
+            value={statsData?.uptime || '---'}
             icon="time"
             color="#F59E0B"
           />
@@ -265,35 +335,41 @@ export default function AdminSystem() {
             onPress={() => setShowAIEnrichModal(true)}
             style={styles.aiEmbedButton}
             accessibilityRole="button"
-            accessibilityLabel={t('a11y.ai_summary_hint')}
+            accessibilityLabel={t('admin.ai_enrich_title')}
           >
             <View
               style={[
                 styles.aiEmbedContent,
                 {
                   borderColor:
-                    stats?.missingEmbeddings && stats.missingEmbeddings > 0
+                    statsData?.missingEmbeddings && statsData.missingEmbeddings > 0
                       ? '#4F8EF7'
                       : '#1E2540',
                   borderStyle:
-                    stats?.missingEmbeddings && stats.missingEmbeddings > 0
+                    statsData?.missingEmbeddings && statsData.missingEmbeddings > 0
                       ? 'dashed'
                       : 'solid',
+                  borderWidth: 1.5,
                 },
               ]}
             >
               <View style={styles.aiEmbedLeft}>
-                <View style={styles.aiEmbedIconContainer}>
-                  <Ionicons name="sparkles" size={20} color="#4F8EF7" />
+                <View style={[styles.aiEmbedIconContainer, { backgroundColor: 'rgba(79, 142, 247, 0.1)' }]}>
+                  <Ionicons name="sparkles" size={22} color="#4F8EF7" />
                 </View>
                 <View>
-                  <Text style={styles.userName}>{t('admin.ai_embeddings')}</Text>
-                  <Text style={styles.userRole}>
-                    {t('admin.books_missing_embeddings', { count: stats?.missingEmbeddings || 0 })}
+                  <Text style={[styles.userName, { fontSize: 16 }]}>{t('admin.ai_embeddings')}</Text>
+                  <Text style={[styles.userRole, { color: (statsData?.missingEmbeddings || 0) > 0 ? '#4F8EF7' : '#5A5F7A' }]}>
+                    {t('admin.books_missing_embeddings', { count: statsData?.missingEmbeddings || 0 })}
                   </Text>
                 </View>
               </View>
-              <Ionicons name="chevron-forward" size={20} color="#5A5F7A" />
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.05)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 }}>
+                <Text style={{ color: '#4F8EF7', fontSize: 12, fontWeight: '700', marginRight: 4 }}>
+                  {t('common.start')}
+                </Text>
+                <Ionicons name="play-circle" size={16} color="#4F8EF7" />
+              </View>
             </View>
           </TouchableOpacity>
         </View>
@@ -301,7 +377,7 @@ export default function AdminSystem() {
         <View style={styles.logHeader}>
           <StatCard
             title={t('analytics.kpi_members')}
-            value={stats?.users || 0}
+            value={statsData?.users || 0}
             subValue={`+12% ${t('common.total_borrows')}`}
             icon="people"
             color="#4F8EF7"
@@ -309,7 +385,7 @@ export default function AdminSystem() {
           />
           <StatCard
             title={t('admin.available_books')}
-            value={stats?.books || 0}
+            value={statsData?.books || 0}
             subValue={t('admin.growth_stable')}
             icon="library"
             color="#10B981"
@@ -335,57 +411,79 @@ export default function AdminSystem() {
           </View>
 
           <View style={styles.userCardList}>
-            {users?.map((user: any, index: number) => (
-              <View
-                key={user.id}
-                style={[
-                  styles.userItem,
-                  { borderBottomWidth: index === (users?.length || 0) - 1 ? 0 : 1, borderBottomColor: '#1E2540' },
-                ]}
-              >
-                <View style={styles.userItemInfo}>
-                  <View style={styles.userNameRow}>
-                    <Text style={styles.userName}>
-                      {user.fullName || user.email}
+            {users?.map((user: any, index: number) => {
+              const isSelf = user.id === profile?.id;
+              return (
+                <View
+                  key={user.id}
+                  style={[
+                    styles.userItem,
+                    { borderBottomWidth: index === (users?.length || 0) - 1 ? 0 : 1, borderBottomColor: '#1E2540' },
+                  ]}
+                >
+                  <View style={styles.userItemInfo}>
+                    <View style={styles.userNameRow}>
+                      <Text style={styles.userName}>
+                        {user.fullName || user.email}
+                      </Text>
+                      {user.isLocked && (
+                        <View style={styles.lockBadge}>
+                          <Text style={styles.lockText}>{t('admin.lock_status')}</Text>
+                        </View>
+                      )}
+                      {user.isSuperAdmin && (
+                        <View style={[styles.lockBadge, { backgroundColor: 'rgba(168, 85, 247, 0.2)' }]}>
+                          <Text style={[styles.lockText, { color: '#A855F7' }]}>{t('admin.super_admin')}</Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text style={styles.userRole}>
+                      {user.role ? t(`roles.${user.role.toLowerCase()}`)?.toUpperCase() : ""} • {user.email}
                     </Text>
-                    {user.is_locked && (
-                      <View style={styles.lockBadge}>
-                        <Text style={styles.lockText}>LOCKED</Text>
+                  </View>
+                  <View style={styles.userActions}>
+                    {!isSelf && !user.isSuperAdmin && (
+                      <>
+                        <TouchableOpacity
+                          onPress={() =>
+                            handleUpdateUser(user.id, { isLocked: !user.isLocked }, user.fullName || user.email)
+                          }
+                          style={styles.userActionBtn}
+                          accessibilityRole="button"
+                        >
+                          <Ionicons
+                            name={
+                              user.isLocked
+                                ? 'lock-open-outline'
+                                : 'lock-closed-outline'
+                            }
+                            size={20}
+                            color={user.isLocked ? '#10B981' : '#F59E0B'}
+                          />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => handleDeleteUser(user.id, user.fullName || user.email)}
+                          style={styles.smallPadding}
+                          accessibilityRole="button"
+                        >
+                          <Ionicons name="trash-outline" size={20} color="#EF4444" />
+                        </TouchableOpacity>
+                      </>
+                    )}
+                    {isSelf && (
+                      <View style={{ padding: 8 }}>
+                        <Ionicons name="person-circle-outline" size={20} color="#4F8EF7" />
+                      </View>
+                    )}
+                    {!isSelf && user.isSuperAdmin && (
+                      <View style={{ padding: 8 }}>
+                        <Ionicons name="shield-checkmark-outline" size={20} color="#A855F7" />
                       </View>
                     )}
                   </View>
-                  <Text style={styles.userRole}>
-                    {user.role ? t(`roles.${user.role.toLowerCase()}`)?.toUpperCase() : ""} • {user.email}
-                  </Text>
                 </View>
-                <View style={styles.userActions}>
-                  <TouchableOpacity
-                    onPress={() =>
-                      handleUpdateUser(user.id, { isLocked: !user.is_locked })
-                    }
-                    style={styles.userActionBtn}
-                    accessibilityRole="button"
-                  >
-                    <Ionicons
-                      name={
-                        user.is_locked
-                          ? 'lock-open-outline'
-                          : 'lock-closed-outline'
-                      }
-                      size={20}
-                      color={user.is_locked ? '#10B981' : '#F59E0B'}
-                    />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => handleDeleteUser(user.id)}
-                    style={styles.smallPadding}
-                    accessibilityRole="button"
-                  >
-                    <Ionicons name="trash-outline" size={20} color="#EF4444" />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ))}
+              );
+            })}
             {(!users || users.length === 0) && (
               <Text style={styles.emptyText}>
                 {t('messages.no_results')}
@@ -596,7 +694,7 @@ export default function AdminSystem() {
               textAlign: 'center',
             }}
           >
-            {t('admin.server_optimized', { server: stats?.server || 'Supabase Singapore' })}
+            {t('admin.server_optimized', { server: statsData?.server || 'Supabase Singapore' })}
           </Text>
           <Text
             style={{
@@ -606,7 +704,7 @@ export default function AdminSystem() {
               marginTop: 4,
             }}
           >
-            Version: {stats?.version || 'v2.0'} • {t('admin.audit_timestamp')}:{' '}
+            {t('admin.version_label')}: {statsData?.version || 'v2.0'} • {t('admin.audit_timestamp')}:{' '}
             {new Date().toLocaleTimeString()}
           </Text>
         </View>
@@ -692,33 +790,35 @@ export default function AdminSystem() {
                 marginBottom: 24,
               }}
             >
-              {['MEMBER', 'LIBRARIAN', 'ADMIN'].map((role) => (
-                <TouchableOpacity
-                  key={role}
-                  onPress={() => setNewUser((p) => ({ ...p, role }))}
-                  style={{
-                    paddingHorizontal: 12,
-                    paddingVertical: 8,
-                    borderRadius: 8,
-                    backgroundColor:
-                      newUser.role === role ? '#4F8EF7' : '#0B0F1A',
-                    borderWidth: 1,
-                    borderColor: newUser.role === role ? '#4F8EF7' : '#2E3654',
-                  }}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: newUser.role === role }}
-                >
-                  <Text
+              {['MEMBER', 'LIBRARIAN', 'ADMIN']
+                .filter(r => profile?.is_super_admin || r === 'MEMBER')
+                .map((role) => (
+                  <TouchableOpacity
+                    key={role}
+                    onPress={() => setNewUser((p) => ({ ...p, role: role as "MEMBER" | "LIBRARIAN" | "ADMIN" }))}
                     style={{
-                      color: newUser.role === role ? '#FFFFFF' : '#8B8FA3',
-                      fontSize: 12,
-                      fontWeight: '700',
+                      paddingHorizontal: 12,
+                      paddingVertical: 8,
+                      borderRadius: 8,
+                      backgroundColor:
+                        newUser.role === role ? '#4F8EF7' : '#0B0F1A',
+                      borderWidth: 1,
+                      borderColor: newUser.role === role ? '#4F8EF7' : '#2E3654',
                     }}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: newUser.role === role }}
                   >
-                    {t(`roles.${role.toLowerCase()}`)?.toUpperCase()}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+                    <Text
+                      style={{
+                        color: newUser.role === role ? '#FFFFFF' : '#8B8FA3',
+                        fontSize: 12,
+                        fontWeight: '700',
+                      }}
+                    >
+                      {t(`roles.${role.toLowerCase()}`)?.toUpperCase()}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
             </View>
 
             <View style={styles.modalActions}>
@@ -818,6 +918,39 @@ export default function AdminSystem() {
             >
               {t('admin.ai_enrich_msg')}
             </Text>
+
+            {isEnriching && (
+              <View style={{ width: '100%', marginBottom: 24 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <Text style={{ color: '#8B8FA3', fontSize: 12 }}>
+                    {t('admin.processing', 'Đang xử lý...')}
+                  </Text>
+                  <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '600' }}>
+                    {enrichProgress.processed} {t('admin.books', 'sách')}
+                  </Text>
+                </View>
+                <View style={{ height: 6, backgroundColor: '#22293F', borderRadius: 3, overflow: 'hidden' }}>
+                  <View 
+                    style={{ 
+                      height: '100%', 
+                      width: '100%', 
+                      backgroundColor: '#4F8EF7',
+                      opacity: 0.6
+                    }} 
+                  />
+                </View>
+                <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#10B981', marginRight: 4 }} />
+                    <Text style={{ color: '#10B981', fontSize: 11 }}>{enrichProgress.success} OK</Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#EF4444', marginRight: 4 }} />
+                    <Text style={{ color: '#EF4444', fontSize: 11 }}>{enrichProgress.failed} ERR</Text>
+                  </View>
+                </View>
+              </View>
+            )}
 
             <View style={{ width: '100%' }}>
               <TouchableOpacity

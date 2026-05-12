@@ -4,7 +4,8 @@ import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { useAnnotations } from '../../../hooks/library/useMember';
 import { Annotation } from '../members.types';
-
+import { useUndoStore } from '../../../store/useUndoStore';
+import { useTranslation } from 'react-i18next';
 import { LinearGradient } from 'expo-linear-gradient';
 
 interface AnnotationLayerProps {
@@ -17,7 +18,8 @@ interface AnnotationLayerProps {
 const COLORS = ['#FFEB3B', '#FFCDD2', '#C8E6C9', '#BBDEFB', '#E1BEE7'];
 
 export default function AnnotationLayer({ isVisible, onClose, bookIsbn, bookTitle }: AnnotationLayerProps) {
-  const { annotations, isLoading: loading, addAnnotation, removeAnnotation: deleteAnnotation } = useAnnotations(bookIsbn);
+  const { t } = useTranslation();
+  const { annotations, isLoading: loading, addAnnotation, removeAnnotation: deleteAnnotation, setAnnotations } = useAnnotations(bookIsbn);
 
   const [isAdding, setIsAdding] = useState(false);
   const [newNote, setNewNote] = useState('');
@@ -39,7 +41,25 @@ export default function AnnotationLayer({ isVisible, onClose, bookIsbn, bookTitl
           <Text style={styles.userName}>{item.user?.fullName || 'Độc giả'}</Text>
           <Text style={styles.time}>{new Date(item.created_at).toLocaleDateString('vi-VN')}</Text>
         </View>
-        <TouchableOpacity onPress={() => deleteAnnotation(item.id)}>
+        <TouchableOpacity onPress={() => {
+          const snapshot = [...annotations];
+          setAnnotations(annotations.filter((a: Annotation) => a.id !== item.id));
+
+          useUndoStore.getState().queueAction({
+            message: t('admin.delete_annotation_pending'),
+            onUndo: () => {
+              setAnnotations(snapshot);
+            },
+            onCommit: async () => {
+              try {
+                await deleteAnnotation(item.id);
+              } catch (err) {
+                setAnnotations(snapshot);
+                throw err;
+              }
+            }
+          });
+        }}>
           <Ionicons name="trash-outline" size={18} color="#EF4444" />
         </TouchableOpacity>
       </View>

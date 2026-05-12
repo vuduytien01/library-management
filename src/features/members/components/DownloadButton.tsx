@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { membersService } from '../members.service';
+import { membersService } from '../member-service';
 import { DownloadedFile } from '../members.types';
 import { haptics } from '../../../core/haptics';
 
@@ -132,3 +132,4 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
 });
+

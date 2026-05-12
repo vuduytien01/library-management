@@ -32,7 +32,7 @@ import { ai } from "../../src/core/ai";
 import { haptics } from "../../src/core/haptics";
 import { sync, SyncAction } from "../../src/core/sync";
 import { OfflineCard } from "../../src/features/members/components/OfflineCard";
-import { membersService } from "../../src/features/members/members.service";
+import { membersService } from "../../src/features/members/member-service";
 import { Book, BorrowRecord } from "../../src/hooks/library/types";
 import { useBroadcast } from "../../src/hooks/useBroadcast";
 import { useConnectivity } from "../../src/hooks/useConnectivity";
@@ -60,7 +60,7 @@ export default function MemberHome() {
   const session = useAuthStore((state) => state.session);
   const logout = useAuthStore((state) => state.logout);
   const updateAvatar = useAuthStore((state) => state.updateAvatar);
-  const { books, borrows, recommendations, feed } = useLibrary();
+  const { books, borrows, recommendations, feed, stats: kernelStats, getCollection } = useLibrary();
   const { latestMessage, dismissLatest } = useBroadcast();
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
@@ -236,27 +236,25 @@ export default function MemberHome() {
       if (myBorrows && myBorrows.length > 0) {
         setIsAiLoading(true);
         try {
-          const titles = myBorrows.map((b) => b.book?.title || "");
+          const titles = myBorrows.map((b: any) => b.book?.title || "");
           const categories = Array.from(
             new Set(
-              myBorrows.map((b) => b.book?.category || "").filter(Boolean),
+              myBorrows.map((b: any) => b.book?.category || "").filter(Boolean),
             ),
           ) as string[];
-
+  
           const results = await ai.getRecommendationsByProfile(
             titles,
             categories,
           );
-
+  
           // Filter out books already borrowed
           const borrowedIsbns = new Set(
-            myBorrows.map((b) => b.book?.isbn).filter(Boolean),
+            myBorrows.map((b: any) => b.book?.isbn).filter(Boolean),
           );
-          const filtered = results.filter(
-            (b: any) => !borrowedIsbns.has(b.isbn),
-          );
+          const filteredBooks = results.filter((b: any) => !borrowedIsbns.has(b.isbn));
 
-          setAiRecs(filtered.slice(0, 5));
+          setAiRecs(filteredBooks.slice(0, 5));
         } catch (error) {
           console.error("AI Recommendation fetch failed:", error);
         } finally {
@@ -344,22 +342,10 @@ export default function MemberHome() {
     return t(`categories.${cat}`, cat);
   };
 
-  // Real-time stats & Overdue logic
-  const activeBorrowedCount =
-    myBorrows?.filter((b: BorrowRecord) => b.status === "BORROWED").length || 0;
-  const totalFine =
-    myBorrows?.reduce(
-      (acc: number, r: BorrowRecord) => acc + (r.estimated_fine || 0),
-      0,
-    ) || 0;
-  const hasOverdue = myBorrows?.some(
-    (b: BorrowRecord) =>
-      b.status === "BORROWED" &&
-      b.due_date &&
-      new Date(b.due_date) < new Date(),
-  );
+  // Real-time stats & Overdue logic from Kernel
+  const { activeCount: activeBorrowedCount, totalFine, hasOverdue } = kernelStats;
 
-  const featuredBooks = bookList?.slice(0, 5) || [];
+  const featuredBooks = getCollection('trending', 5);
 
   const stats = React.useMemo(
     () => [
@@ -887,7 +873,7 @@ export default function MemberHome() {
             <ActivityIndicator color="#4F8EF7" style={{ marginVertical: 20 }} />
           ) : feedData && feedData.length > 0 ? (
             <View style={styles.feedList}>
-              {feedData.slice(0, 3).map((activity, index) => (
+              {feedData.slice(0, 3).map((activity: any, index: number) => (
                 <AnimatedWrapper
                   key={activity.id}
                   index={index}
@@ -983,7 +969,7 @@ export default function MemberHome() {
               showsHorizontalScrollIndicator={false}
               style={styles.carousel}
             >
-              {(aiRecs.length > 0 ? aiRecs : recBooks)?.map((book, index) => (
+              {(aiRecs.length > 0 ? aiRecs : recBooks)?.map((book: any, index: number) => (
                 <AnimatedWrapper
                   key={book.isbn}
                   index={index}
@@ -1031,7 +1017,7 @@ export default function MemberHome() {
           showsHorizontalScrollIndicator={false}
           style={styles.carousel}
         >
-          {featuredBooks.map((book, index) => (
+          {featuredBooks.map((book: any, index: number) => (
             <AnimatedWrapper
               key={book.isbn}
               index={index}
@@ -1094,7 +1080,7 @@ export default function MemberHome() {
         </ScrollView>
 
         <View style={styles.booksGrid}>
-          {myBooks?.slice(5, 13).map((book, index) => (
+          {myBooks?.slice(5, 13).map((book: any, index: number) => (
             <AnimatedWrapper
               key={book.isbn}
               index={index % 2}
@@ -1118,44 +1104,7 @@ export default function MemberHome() {
           ))}
         </View>
 
-        <TouchableOpacity
-          style={styles.aiFab}
-          onPress={startListening}
-          activeOpacity={0.9}
-        >
-          <LinearGradient
-            colors={["#4F8EF7", "#3A75F2"]}
-            style={styles.aiFabGradient}
-          >
-            <Ionicons name="mic" size={24} color="#FFFFFF" />
-          </LinearGradient>
-        </TouchableOpacity>
 
-        {/* Voice Search Modal */}
-        <Modal visible={isListening} transparent={true} animationType="fade">
-          <View style={styles.voiceOverlay}>
-            <View style={styles.voiceCard}>
-              <View style={styles.voiceWaveContainer}>
-                {[0, 1, 2, 3, 4].map((i) => (
-                  <View
-                    key={i}
-                    style={[
-                      styles.voiceWave,
-                      { height: 20 + Math.random() * 40 },
-                    ]}
-                  />
-                ))}
-              </View>
-              <Text style={styles.voiceStatus}>{t("common.listening")}</Text>
-              <TouchableOpacity
-                style={styles.cancelVoiceBtn}
-                onPress={() => stopListening(false)}
-              >
-                <Text style={styles.cancelVoiceText}>{t("common.cancel")}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </Modal>
 
         <Modal visible={showAiModal} transparent animationType="slide">
           <BlurView intensity={80} tint="dark" style={styles.modalOverlay}>
@@ -1842,3 +1791,4 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 });
+

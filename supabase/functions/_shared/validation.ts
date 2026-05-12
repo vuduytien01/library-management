@@ -1,4 +1,6 @@
-import { z } from 'https://esm.sh/zod@3.22.4';
+// Deno type definitions are provided by deno.d.ts in the functions root
+
+import { z } from "zod";
 
 /**
  * User Creation Schema (DTO)

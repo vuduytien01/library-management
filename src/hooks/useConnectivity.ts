@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import NetInfo from '@react-native-community/netinfo';
-import { membersService } from '../features/members/members.service';
+import { membersService } from '../features/members/member-service';
 
 export function useConnectivity() {
   const [isOnline, setIsOnline] = useState(true);

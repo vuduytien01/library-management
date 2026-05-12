@@ -4,7 +4,7 @@ import { View, StyleSheet, TouchableOpacity, Text, SafeAreaView, ActivityIndicat
 import { WebView } from 'react-native-webview'; // Cần cài react-native-webview
 import { Ionicons } from '@expo/vector-icons';
 import * as Sharing from 'expo-sharing';
-import { membersService } from '../../members/members.service';
+import { membersService } from '../../members/member-service';
 import NetInfo from '@react-native-community/netinfo';
 
 interface PDFReaderProps {
@@ -254,3 +254,4 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   }
 });
+

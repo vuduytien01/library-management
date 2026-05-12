@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, TextInput,
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useQueryClient } from '@tanstack/react-query';
-import { useLibrary } from '@/src/hooks/useLibrary';
+import { useLibrary, useBook, useBookInventory, useSimilarBooks, useBookReviews, Annotation } from '@/src/hooks/useLibrary';
 import { useAuthStore } from '@/src/store/useAuthStore';
 import { useAccountStatus } from '@/src/hooks/useAccountStatus';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -21,6 +21,9 @@ import NetInfo from '@react-native-community/netinfo';
 import { haptics } from '@/src/core/haptics';
 import AnnotationLayer from '@/src/features/members/components/AnnotationLayer';
 import { useTranslation } from 'react-i18next';
+import { PROVINCES_34 } from '@/src/constants/logistics';
+import { logisticsAI } from '@/src/services/library/logisticsAI';
+
 
 const { width } = Dimensions.get('window');
 
@@ -29,12 +32,13 @@ export default function BookDetailPage() {
   const { isbn } = useLocalSearchParams<{ isbn: string }>();
   const router = useRouter();
   const profile = useAuthStore((state) => state.profile);
-  const { books, reviews, borrows } = useLibrary();
+  const { reviews, borrows, canBorrow } = useLibrary();
   const { isLocked, lockReason } = useAccountStatus();
   
-  const { data: book, isLoading: isBookLoading } = books.getByIsbn(isbn!);
-  const { data: bookReviews, isLoading: isReviewsLoading } = reviews.list(isbn!);
-  const { data: similarBooks } = books.getSimilar((book as any)?.embedding, isbn!);
+  const { data: book, isLoading: isBookLoading } = useBook(isbn!);
+  const { data: bookReviews, isLoading: isReviewsLoading } = useBookReviews(isbn!);
+  const { data: similarBooks } = useSimilarBooks(isbn!);
+  const { data: inventory } = useBookInventory(isbn!);
   const { mutate: postReview } = reviews.add;
 
   const [userRating, setUserRating] = useState(0);
@@ -315,7 +319,7 @@ export default function BookDetailPage() {
 
               {annotations.length > 0 ? (
                 <>
-                  {annotations.slice(0, 3).map((note) => (
+                  {annotations.slice(0, 3).map((note: Annotation) => (
                     <View key={note.id} style={styles.annotationItem}>
                       <View style={styles.annotationHeader}>
                         <Image 
@@ -359,7 +363,7 @@ export default function BookDetailPage() {
               </View>
               <View style={styles.metaItem} accessibilityLabel={`Thể loại: ${book.category ? t('categories.' + book.category, book.category) : 'Chưa xác định'}`}>
                 <Text style={styles.metaLabel}>{t('common.category', 'Thể loại')}</Text>
-                <Text style={styles.metaValue}>{book.category ? t('categories.' + book.category, book.category) : 'N/A'}</Text>
+                <Text style={styles.metaValue}>{book.category ? String(t('categories.' + book.category, book.category)) : 'N/A'}</Text>
               </View>
               <View style={styles.metaItem} accessibilityLabel={`Ngôn ngữ: ${book.language || 'Tiếng Việt'}`}>
                 <Text style={styles.metaLabel}>Ngôn ngữ</Text>
@@ -373,31 +377,84 @@ export default function BookDetailPage() {
           )}
           
           <View style={styles.branchSection}>
-            <Text style={styles.sectionTitle}>Tình trạng tại các chi nhánh</Text>
-            {books.getInventory(isbn!).data?.map((bi: any) => (
-              <TouchableOpacity 
-                key={bi.branch_id}
-                style={[
-                  styles.branchCard,
-                  bi.available_copies <= 0 && { opacity: 0.5 },
-                  selectedBranch === bi.branch_id && styles.selectedBranchCard
-                ]}
-                onPress={() => bi.available_copies > 0 && setSelectedBranch(bi.branch_id)}
-                disabled={bi.available_copies <= 0}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: '#FFFFFF', fontWeight: '700' }}>{bi.branches?.name}</Text>
-                  <Text style={{ color: '#8B8FA3', fontSize: 12 }}>{bi.branches?.location}</Text>
+            <Text style={styles.sectionTitle}>Tình trạng tại các chi nhánh trong Vùng</Text>
+            {inventory?.map((bi: any) => {
+              const province = PROVINCES_34.find(p => p.id === bi.branches?.province_v2_id);
+              const isOutOfStock = bi.available_copies <= 0;
+              
+              return (
+                <View 
+                  key={bi.branch_id}
+                  style={[
+                    styles.branchCard,
+                    isOutOfStock && { opacity: 0.6, borderColor: '#333' },
+                    selectedBranch === bi.branch_id && styles.selectedBranchCard
+                  ]}
+                >
+                  <View style={{ flex: 1 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 15 }}>{bi.branches?.name}</Text>
+                      {province && (
+                        <View style={styles.regionBadge}>
+                          <Text style={styles.regionBadgeText}>{province.region.replace('_', ' ')}</Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text style={{ color: '#8B8FA3', fontSize: 12, marginTop: 2 }}>{bi.branches?.location}</Text>
+                  </View>
+
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={{ color: !isOutOfStock ? '#10B981' : '#EF4444', fontWeight: '800', fontSize: 16 }}>
+                      {!isOutOfStock ? `${bi.available_copies} bản` : 'Hết sách'}
+                    </Text>
+                    
+                    {!isOutOfStock ? (
+                      <TouchableOpacity 
+                        style={styles.selectBranchBtn}
+                        onPress={() => setSelectedBranch(bi.branch_id)}
+                      >
+                        <Text style={styles.selectBranchBtnText}>
+                          {selectedBranch === bi.branch_id ? 'Đã chọn' : 'Đến lấy ngay'}
+                        </Text>
+                      </TouchableOpacity>
+                    ) : (
+                      <TouchableOpacity 
+                        style={styles.transferRequestBtn}
+                        onPress={() => {
+                          const suggestion = logisticsAI.suggestTransfer({ ...book, branch_inventory: inventory }, province?.id || 0);
+                          if (suggestion) {
+                            const isNational = suggestion.distanceTier === 'NATIONAL';
+                            const isPlatinum = profile?.membershipType === 'PLATINUM';
+                            const fee = isNational && !isPlatinum ? '30,000 VND' : 'Miễn phí';
+                            const time = isNational ? '3-5 ngày' : '24h-48h';
+                            
+                            Alert.alert(
+                              isNational ? 'Yêu cầu Toàn quốc' : 'Yêu cầu Điều phối',
+                              `Chúng tôi sẽ chuyển sách từ ${suggestion.fromBranchName} (${suggestion.region.replace('_', ' ')}) về đây.\n\n• Phí vận chuyển: ${fee}\n• Thời gian dự kiến: ${time}\n\nBạn có muốn đặt trước không?`,
+                              [
+                                { text: 'Để sau', style: 'cancel' },
+                                { text: 'Yêu cầu ngay', onPress: () => {
+                                  haptics.success();
+                                  setSelectedBranch(bi.branch_id);
+                                }}
+                              ]
+                            );
+                          } else {
+                            Alert.alert('Thông báo', 'Hiện tại toàn quốc đều đã hết sách này. Vui lòng quay lại sau.');
+                          }
+
+                        }}
+
+                      >
+                        <Text style={styles.transferRequestText}>Yêu cầu chuyển sách</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
                 </View>
-                <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={{ color: bi.available_copies > 0 ? '#10B981' : '#EF4444', fontWeight: '800' }}>
-                    {bi.available_copies} bản
-                  </Text>
-                  <Text style={{ color: '#5A5F7A', fontSize: 10 }}>Của tổng {bi.total_copies}</Text>
-                </View>
-              </TouchableOpacity>
-            ))}
+              );
+            })}
           </View>
+
 
           <View style={styles.borrowContainer}>
             <TouchableOpacity 
@@ -407,10 +464,12 @@ export default function BookDetailPage() {
               ]}
               onPress={async () => {
                 haptics.light();
-                if (isLocked) {
-                  Alert.alert('Tài khoản bị khóa', 'Vui lòng liên hệ thủ thư.');
+                const check = canBorrow(book.isbn);
+                if (!check.allowed) {
+                  Alert.alert('Không thể mượn', check.reason);
                   return;
                 }
+
                 if (!selectedBranch) {
                   Alert.alert('Lỗi', 'Vui lòng chọn chi nhánh để mượn sách');
                   return;
@@ -617,7 +676,7 @@ export default function BookDetailPage() {
           {isReviewsLoading ? (
             <ActivityIndicator color="#4F8EF7" />
           ) : bookReviews && bookReviews.length > 0 ? (
-            bookReviews.map((review) => (
+            bookReviews.map((review: any) => (
               <View key={review.id} style={styles.reviewCard}>
                 <View style={styles.reviewHeader}>
                   <View style={styles.reviewerInfo}>
@@ -844,18 +903,55 @@ const styles = StyleSheet.create({
   emptyReviews: { color: '#5A5F7A', textAlign: 'center', marginTop: 10 },
   branchSection: { marginTop: 24 },
   branchCard: {
-    backgroundColor: '#151929',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 8,
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: '#151929',
+    padding: 16,
+    borderRadius: 16,
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: '#1E2540',
   },
   selectedBranchCard: {
     borderColor: '#3A75F2',
-    backgroundColor: '#3A75F210',
+    backgroundColor: 'rgba(58, 117, 242, 0.1)',
+  },
+  regionBadge: {
+    backgroundColor: 'rgba(58, 117, 242, 0.2)',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginLeft: 8,
+  },
+  regionBadgeText: {
+    color: '#3A75F2',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  selectBranchBtn: {
+    marginTop: 8,
+    backgroundColor: '#3A75F2',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  selectBranchBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  transferRequestBtn: {
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#3A75F2',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  transferRequestText: {
+    color: '#3A75F2',
+    fontSize: 12,
+    fontWeight: '700',
   },
   recommendationsSection: {
     paddingVertical: 24,

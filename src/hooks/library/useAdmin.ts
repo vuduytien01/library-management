@@ -1,14 +1,14 @@
+import { useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '../../api/supabase';
 import { adminService } from '../../features/admin/admin.service';
 import { useAuthStore } from '../../store/useAuthStore';
 
 export function useAdmin() {
   const queryClient = useQueryClient();
-  const { profile } = useAuthStore();
+  const profile = useAuthStore(state => state.profile);
 
   // --- Borrows Management ---
-  const getAllBorrows = () => useQuery({
+  const allBorrowsQuery = useQuery({
     queryKey: ['all-borrows'],
     queryFn: () => adminService.getAllBorrows(),
   });
@@ -30,26 +30,13 @@ export function useAdmin() {
     }
   });
 
-  // --- Staff & Members ---
-  const searchMembers = (query: string) => useQuery({
-    queryKey: ['search_members', query],
-    enabled: query.length > 2,
-    queryFn: () => adminService.searchMembers(query),
-  });
-
-  // --- Reports & Analytics ---
-  const getAnalytics = (range: string) => useQuery({
-    queryKey: ['analytics', range],
-    queryFn: () => adminService.getAnalytics(range),
-  });
-
-  const getMonthlyStats = (month: string) => useQuery({
-    queryKey: ['monthly_stats', month],
-    queryFn: () => adminService.getMonthlyStats(month),
-  });
-
   // --- Logistics ---
-  const getLogisticsSuggestions = () => useQuery({
+  const transfersQuery = useQuery({
+    queryKey: ['inventory_transfers'],
+    queryFn: () => adminService.getAllTransfers(),
+  });
+
+  const logisticsSuggestionsQuery = useQuery({
     queryKey: ['logistics_suggestions'],
     queryFn: () => adminService.getAIRedistributionSuggestions(),
   });
@@ -63,31 +50,52 @@ export function useAdmin() {
     }
   });
 
-  return {
-    borrows: { 
-      listAll: getAllBorrows, 
-      approve: approveBorrow, 
-      reject: rejectBorrow 
-    },
-    staff: { searchMembers },
-    analytics: { getAnalytics, getMonthlyStats },
-    logistics: {
-      getTransfers: () => useQuery({
-        queryKey: ['inventory_transfers'],
-        queryFn: () => adminService.getAllTransfers(),
-      }),
-      getAiSuggestions: () => useQuery({
-        queryKey: ['logistics_suggestions'],
-        queryFn: () => adminService.getAIRedistributionSuggestions(),
-      }),
-      executeTransfer,
-      completeTransfer: useMutation({
-        mutationFn: (id: string) => adminService.completeTransfer(id),
-        onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: ['inventory_transfers'] });
-          queryClient.invalidateQueries({ queryKey: ['books'] });
-        }
+  const completeTransfer = useMutation({
+    mutationFn: (id: string) => adminService.completeTransfer(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['inventory_transfers'] });
+      queryClient.invalidateQueries({ queryKey: ['books'] });
+    }
+  });
+
+  // Sub-objects for domain organization
+  const borrows = useMemo(() => ({
+    listAll: () => allBorrowsQuery,
+    approve: approveBorrow,
+    reject: rejectBorrow
+  }), [allBorrowsQuery.data, allBorrowsQuery.status, approveBorrow, rejectBorrow]);
+
+  const logistics = useMemo(() => ({
+    getTransfers: () => transfersQuery,
+    getAiSuggestions: () => logisticsSuggestionsQuery,
+    executeTransfer,
+    completeTransfer
+  }), [transfersQuery.data, transfersQuery.status, logisticsSuggestionsQuery.data, logisticsSuggestionsQuery.status, executeTransfer, completeTransfer]);
+
+  const analytics = useMemo(() => ({
+    // Functions that depend on parameters must still be functions, 
+    // but they shouldn't call useQuery themselves.
+    // Instead, they should return data from a pre-fetched query if possible,
+    // or we should use individual hooks for parameterized queries.
+    getAnalytics: (range: string) => ({
+      queryKey: ['analytics', range],
+      queryFn: () => adminService.getAnalytics(range)
+    }),
+    getMonthlyStats: (month: string) => ({
+      queryKey: ['monthly_stats', month],
+      queryFn: () => adminService.getMonthlyStats(month)
+    })
+  }), []);
+
+  return useMemo(() => ({
+    borrows,
+    logistics,
+    analytics,
+    staff: {
+      searchMembers: (query: string) => ({
+        queryKey: ['search_members', query],
+        queryFn: () => adminService.searchMembers(query)
       })
     }
-  };
+  }), [borrows, logistics, analytics]);
 }

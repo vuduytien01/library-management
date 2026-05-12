@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   View, 
   Text, 
@@ -10,116 +10,54 @@ import {
   Platform,
   ActivityIndicator,
   Dimensions,
-  Image,
-  ScrollView
+  Vibration
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ai } from '../../src/core/ai';
 import { BlurView } from 'expo-blur';
-import Animated, { FadeIn, SlideInRight, SlideInLeft } from 'react-native-reanimated';
-import { Audio } from 'expo-av';
+import Animated, { 
+  FadeIn, 
+  SlideInRight, 
+  SlideInLeft, 
+  useAnimatedStyle, 
+  withTiming, 
+  withRepeat,
+  withSequence
+} from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
+import { useAiKernel } from '../../src/services/ai/useAiKernel';
 
-const { width } = Dimensions.get('window');
-
-interface Message {
-  id: string;
-  role: 'user' | 'model';
-  text: string;
-  timestamp: Date;
-}
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export default function ChatScreen() {
-  const [messages, setMessages] = useState<Message[]>([
-    { 
-      id: '1', 
-      role: 'model', 
-      text: 'Chào bạn! Tôi là BiblioAI, thủ thư ảo của bạn. Bạn muốn tôi tìm giúp cuốn sách nào hay có thắc mắc gì không?', 
-      timestamp: new Date() 
-    }
-  ]);
   const [inputText, setInputText] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
-  const [recording, setRecording] = useState<Audio.Recording | null>(null);
-  
   const flatListRef = useRef<FlatList>(null);
   const router = useRouter();
 
-  const handleSend = async (text: string) => {
-    if (!text.trim()) return;
+  // Sử dụng Deep AI Kernel
+  const { 
+    mode, 
+    messages, 
+    visualizerData, 
+    startListening, 
+    stopListening, 
+    sendMessage, 
+    cancel 
+  } = useAiKernel();
 
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      role: 'user',
-      text: text.trim(),
-      timestamp: new Date()
-    };
+  const isListening = mode === 'listening';
+  const isThinking = mode === 'thinking';
+  const isSpeaking = mode === 'speaking';
 
-    setMessages(prev => [...prev, userMessage]);
+  const handleSend = () => {
+    if (!inputText.trim()) return;
+    sendMessage(inputText);
     setInputText('');
-    setIsLoading(true);
-
-    try {
-      const response = await ai.askLibrarian(text);
-      const aiMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'model',
-        text: response,
-        timestamp: new Date()
-      };
-      setMessages(prev => [...prev, aiMessage]);
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setIsLoading(false);
-    }
   };
 
-  const startRecording = async () => {
-    try {
-      const permission = await Audio.requestPermissionsAsync();
-      if (permission.status !== 'granted') return;
-
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-      });
-
-      const { recording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY
-      );
-      setRecording(recording);
-      setIsRecording(true);
-    } catch (err) {
-      console.error('Failed to start recording', err);
-    }
-  };
-
-  const stopRecording = async () => {
-    setIsRecording(false);
-    if (!recording) return;
-
-    await recording.stopAndUnloadAsync();
-    const uri = recording.getURI();
-    setRecording(null);
-
-    if (uri) {
-      // In a real implementation, we would send this audio to an STT API
-      // For now, we'll simulate voice recognition
-      setIsLoading(true);
-      setTimeout(() => {
-        const simulatedText = "Tìm cho tôi sách trinh thám ở London";
-        setInputText(simulatedText);
-        setIsLoading(false);
-        handleSend(simulatedText);
-      }, 1500);
-    }
-  };
-
-  const renderMessage = ({ item }: { item: Message }) => {
+  const renderMessage = ({ item, index }: { item: any, index: number }) => {
     const isAi = item.role === 'model';
+    
     return (
       <Animated.View 
         entering={isAi ? SlideInLeft : SlideInRight}
@@ -132,7 +70,7 @@ export default function ChatScreen() {
         )}
         <View style={[styles.messageBubble, isAi ? styles.aiBubble : styles.userBubble]}>
           <Text style={[styles.messageText, isAi ? styles.aiText : styles.userText]}>
-            {item.text}
+            {item.parts[0].text}
           </Text>
         </View>
       </Animated.View>
@@ -154,60 +92,66 @@ export default function ChatScreen() {
         <View style={styles.headerTitleContainer}>
           <Text style={styles.headerTitle}>BiblioAI Assistant</Text>
           <View style={styles.statusIndicator}>
-            <View style={styles.statusDot} />
-            <Text style={styles.statusText}>Đang trực tuyến</Text>
+            <View style={[styles.statusDot, (isListening || isSpeaking) && { backgroundColor: '#3A75F2' }]} />
+            <Text style={styles.statusText}>
+              {mode === 'idle' ? 'Đang trực tuyến' : (isListening ? 'Đang nghe...' : (isSpeaking ? 'AI đang nói...' : 'Đang suy nghĩ...'))}
+            </Text>
           </View>
         </View>
-        <TouchableOpacity style={styles.menuBtn}>
-          <Ionicons name="ellipsis-vertical" size={20} color="#8B8FA3" />
-        </TouchableOpacity>
       </View>
 
       <FlatList
         ref={flatListRef}
         data={messages}
         renderItem={renderMessage}
-        keyExtractor={item => item.id}
+        keyExtractor={(_, index) => index.toString()}
         contentContainerStyle={styles.listContent}
-        onContentSizeChange={() => flatListRef.current?.scrollToEnd()}
+        onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
       />
 
-      {messages.length === 1 && !isLoading && (
-        <View style={styles.quickActionsContainer}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.quickActionsScroll}>
-            {[
-              "Gợi ý sách trinh thám hay",
-              "Sách nào đang hot hiện nay?",
-              "Làm sao để mượn sách?",
-              "Tìm sách về AI & Công nghệ"
-            ].map((text, index) => (
-              <TouchableOpacity 
-                key={index} 
-                style={styles.quickActionChip}
-                onPress={() => handleSend(text)}
-              >
-                <Text style={styles.quickActionText}>{text}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-      )}
-
-      {isLoading && (
+      {isThinking && (
         <View style={styles.typingIndicator}>
           <ActivityIndicator size="small" color="#3A75F2" />
           <Text style={styles.typingText}>BiblioAI đang suy nghĩ...</Text>
         </View>
       )}
 
+      {/* Visualizer Area (Global for Chat) */}
+      {(isListening || isSpeaking) && (
+        <View style={styles.visualizerOverlay}>
+          <BlurView intensity={30} tint="dark" style={styles.visualizerBlur}>
+            <View style={styles.waveform}>
+              {visualizerData.map((val, i) => (
+                <View 
+                  key={i} 
+                  style={[
+                    styles.waveBar, 
+                    { height: Math.max(4, val / 2), backgroundColor: isListening ? '#EF4444' : '#3A75F2' }
+                  ]} 
+                />
+              ))}
+            </View>
+            <Text style={styles.visualizerHint}>
+              {isListening ? 'Thả tay để gửi tin nhắn' : 'Chạm để ngắt lời AI'}
+            </Text>
+          </BlurView>
+        </View>
+      )}
+
       <View style={styles.inputContainer}>
         <BlurView intensity={20} tint="dark" style={styles.inputBlur}>
           <TouchableOpacity 
-            style={[styles.voiceBtn, isRecording && styles.recordingActive]} 
-            onPressIn={startRecording}
-            onPressOut={stopRecording}
+            style={[styles.voiceBtn, isListening && styles.recordingActive]} 
+            onPressIn={() => {
+              Vibration.vibrate(50);
+              startListening();
+            }}
+            onPressOut={() => {
+              Vibration.vibrate(50);
+              stopListening();
+            }}
           >
-            <Ionicons name={isRecording ? "mic" : "mic-outline"} size={22} color="white" />
+            <Ionicons name={isListening ? "mic" : "mic-outline"} size={22} color="white" />
           </TouchableOpacity>
           
           <TextInput
@@ -216,13 +160,13 @@ export default function ChatScreen() {
             placeholderTextColor="#5A5F7A"
             value={inputText}
             onChangeText={setInputText}
-            multiline
+            onSubmitEditing={handleSend}
           />
           
           <TouchableOpacity 
             style={[styles.sendBtn, !inputText.trim() && styles.sendBtnDisabled]} 
-            onPress={() => handleSend(inputText)}
-            disabled={!inputText.trim()}
+            onPress={handleSend}
+            disabled={!inputText.trim() || isThinking}
           >
             <Ionicons name="send" size={20} color="white" />
           </TouchableOpacity>
@@ -250,7 +194,6 @@ const styles = StyleSheet.create({
   statusIndicator: { flexDirection: 'row', alignItems: 'center', marginTop: 2 },
   statusDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#10B981', marginRight: 6 },
   statusText: { color: '#8B8FA3', fontSize: 11, fontWeight: '600' },
-  menuBtn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   listContent: { padding: 20, paddingBottom: 40 },
   messageWrapper: { flexDirection: 'row', marginBottom: 20, maxWidth: '85%' },
   aiWrapper: { alignSelf: 'flex-start' },
@@ -267,10 +210,6 @@ const styles = StyleSheet.create({
   messageBubble: {
     padding: 14,
     borderRadius: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
     elevation: 2,
   },
   aiBubble: {
@@ -294,6 +233,37 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   typingText: { color: '#8B8FA3', fontSize: 12, fontStyle: 'italic' },
+  visualizerOverlay: {
+    position: 'absolute',
+    bottom: 110,
+    left: 20,
+    right: 20,
+    zIndex: 100,
+  },
+  visualizerBlur: {
+    borderRadius: 20,
+    overflow: 'hidden',
+    padding: 15,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(58, 117, 242, 0.3)',
+  },
+  waveform: {
+    flexDirection: 'row',
+    height: 40,
+    alignItems: 'center',
+    gap: 3,
+    marginBottom: 8,
+  },
+  waveBar: {
+    width: 3,
+    borderRadius: 2,
+  },
+  visualizerHint: {
+    color: '#8B8FA3',
+    fontSize: 12,
+    fontWeight: '500',
+  },
   inputContainer: {
     paddingHorizontal: 20,
     paddingBottom: Platform.OS === 'ios' ? 30 : 20,
@@ -325,8 +295,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     paddingHorizontal: 16,
     maxHeight: 100,
-    paddingTop: 8,
-    paddingBottom: 8,
   },
   sendBtn: {
     width: 44,
@@ -339,25 +307,5 @@ const styles = StyleSheet.create({
   sendBtnDisabled: {
     backgroundColor: '#1E2540',
     opacity: 0.5,
-  },
-  quickActionsContainer: {
-    paddingBottom: 15,
-  },
-  quickActionsScroll: {
-    paddingHorizontal: 20,
-  },
-  quickActionChip: {
-    backgroundColor: 'rgba(58, 117, 242, 0.1)',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
-    marginRight: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(58, 117, 242, 0.2)',
-  },
-  quickActionText: {
-    color: '#3A75F2',
-    fontSize: 13,
-    fontWeight: '600',
   },
 });

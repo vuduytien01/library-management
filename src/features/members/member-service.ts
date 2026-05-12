@@ -1,7 +1,6 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { persistence } from "../../core/persistence";
 import * as FileSystem from "expo-file-system";
 import { supabase } from "../../api/supabase";
-import { useAuthStore } from "../../store/useAuthStore";
 import {
   Annotation,
   BorrowRecord,
@@ -152,13 +151,12 @@ export const membersService = {
     return data;
   },
 
-  async getMyBadges() {
-    const profile = useAuthStore.getState().profile;
-    if (!profile) return [];
+  async getMyBadges(userId: string) {
+    if (!userId) return [];
     const { data, error } = await supabase
       .from("user_badges")
       .select("earned_at, badges(*)")
-      .eq("user_id", profile.id);
+      .eq("user_id", userId);
     if (error) return [];
     return data.map((item: any) => ({
       ...item.badges,
@@ -183,80 +181,59 @@ export const membersService = {
     }));
   },
 
-  async addXP(amount: number, userId?: string) {
-    const state = useAuthStore.getState();
-    const profile = state.profile;
-    const targetUserId = userId || profile?.id;
-    if (!targetUserId) return;
+  async addXP(amount: number, userId: string, p_currentXP?: number, p_currentLevel?: number) {
+    if (!userId) return;
 
-    let currentXP = 0;
-    let currentLevel = 1;
+    let currentXP = p_currentXP;
+    let currentLevel = p_currentLevel;
 
-    if (targetUserId === profile?.id) {
-      currentXP = profile.xp;
-      currentLevel = profile.level;
-    } else {
+    if (currentXP === undefined || currentLevel === undefined) {
       const { data } = await supabase
         .from("profiles")
         .select("xp, level")
-        .eq("id", targetUserId)
+        .eq("id", userId)
         .single();
       currentXP = data?.xp || 0;
       currentLevel = data?.level || 1;
     }
 
-    const newXP = currentXP + amount;
+    const newXP = (currentXP || 0) + amount;
     const newLevel = this.calculateLevel(newXP);
 
-    await supabase
+    const { error } = await supabase
       .from("profiles")
       .update({ xp: newXP, level: newLevel })
-      .eq("id", targetUserId);
+      .eq("id", userId);
 
-    if (targetUserId === profile?.id) {
-      state.updateProfile({ xp: newXP, level: newLevel } as any);
-    }
-    return { newXP, newLevel, leveledUp: newLevel > currentLevel };
+    if (error) throw error;
+    
+    return { newXP, newLevel, leveledUp: newLevel > (currentLevel || 1) };
   },
 
   // --- Offline & Downloads ---
-  async saveItem(key: string, data: any) {
-    await AsyncStorage.setItem(key, JSON.stringify(data));
-  },
-  async getItem(key: string) {
-    const d = await AsyncStorage.getItem(key);
-    return d ? JSON.parse(d) : null;
-  },
-
   async saveProfile(profile: any) {
-    await this.saveItem("BIBLIO_OFFLINE_PROFILE", profile);
+    await persistence.saveProfile(profile);
   },
   async getProfile() {
-    return await this.getItem("BIBLIO_OFFLINE_PROFILE");
+    return await persistence.getProfile();
   },
 
   async saveBorrows(records: any[]) {
-    await this.saveItem("BIBLIO_OFFLINE_BORROWS", records);
+    await persistence.saveItem("BIBLIO_OFFLINE_BORROWS", records);
   },
   async getBorrows() {
-    return (await this.getItem("BIBLIO_OFFLINE_BORROWS")) || [];
+    return (await persistence.getItem("BIBLIO_OFFLINE_BORROWS")) || [];
   },
 
   async saveBooks(books: any[]) {
-    await this.saveItem("BIBLIO_OFFLINE_BOOKS", books);
+    await persistence.saveItem("BIBLIO_OFFLINE_BOOKS", books);
   },
   async getBooks() {
-    return (await this.getItem("BIBLIO_OFFLINE_BOOKS")) || [];
+    return (await persistence.getItem("BIBLIO_OFFLINE_BOOKS")) || [];
   },
 
   async clearAll() {
-    await AsyncStorage.multiRemove([
-      "BIBLIO_OFFLINE_PROFILE",
-      "BIBLIO_OFFLINE_BORROWS",
-      "BIBLIO_OFFLINE_BOOKS",
-      "BIBLIO_OFFLINE_DOWNLOADS",
-      "BIBLIO_OFFLINE_ACTION_QUEUE",
-    ]);
+    await persistence.clearAllAuth();
   },
 
   async downloadFile(
@@ -279,7 +256,7 @@ export const membersService = {
     const result = await download.downloadAsync();
     if (!result) throw new Error("Download failed");
 
-    const downloads = (await this.getDownloads());
+    const downloads = (await persistence.getItem("BIBLIO_OFFLINE_DOWNLOADS")) || [];
     const newDownload: DownloadedFile = {
       id,
       title,
@@ -287,7 +264,7 @@ export const membersService = {
       uri: result.uri,
       downloaded_at: new Date().toISOString(),
     };
-    await this.saveItem("BIBLIO_OFFLINE_DOWNLOADS", [
+    await persistence.saveItem("BIBLIO_OFFLINE_DOWNLOADS", [
       ...downloads,
       newDownload,
     ]);
@@ -295,17 +272,17 @@ export const membersService = {
   },
 
   async getDownloads(): Promise<DownloadedFile[]> {
-    return (await this.getItem("BIBLIO_OFFLINE_DOWNLOADS")) || [];
+    return (await persistence.getItem("BIBLIO_OFFLINE_DOWNLOADS")) || [];
   },
 
   async getLocalUri(id: string): Promise<string | null> {
-    const downloads = await this.getDownloads();
+    const downloads = (await persistence.getItem("BIBLIO_OFFLINE_DOWNLOADS")) || [];
     const file = downloads.find((d: DownloadedFile) => d.id === id);
     return file ? file.uri : null;
   },
   
   async deleteDownload(id: string) {
-    const downloads = await this.getDownloads();
+    const downloads = (await persistence.getItem("BIBLIO_OFFLINE_DOWNLOADS")) || [];
     const file = downloads.find((d: DownloadedFile) => d.id === id);
     if (file) {
       try {
@@ -313,22 +290,22 @@ export const membersService = {
       } catch (e) {}
     }
     const updated = downloads.filter((d: DownloadedFile) => d.id !== id);
-    await this.saveItem("BIBLIO_OFFLINE_DOWNLOADS", updated);
+    await persistence.saveItem("BIBLIO_OFFLINE_DOWNLOADS", updated);
   },
 
   async queueAction(type: string, payload: any) {
     const queue = (await this.getActionQueue());
-    await this.saveItem("BIBLIO_OFFLINE_ACTION_QUEUE", [
+    await persistence.saveItem("BIBLIO_OFFLINE_ACTION_QUEUE", [
       ...queue,
       { id: Date.now().toString(), type, payload, timestamp: Date.now() },
     ]);
   },
 
   async getActionQueue() {
-    return (await this.getItem("BIBLIO_OFFLINE_ACTION_QUEUE")) || [];
+    return (await persistence.getItem("BIBLIO_OFFLINE_ACTION_QUEUE")) || [];
   },
   async clearActionQueue() {
-    await this.saveItem("BIBLIO_OFFLINE_ACTION_QUEUE", []);
+    await persistence.saveItem("BIBLIO_OFFLINE_ACTION_QUEUE", []);
   },
 
   async processQueue() {

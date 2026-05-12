@@ -20,6 +20,30 @@ import { BlurView } from 'expo-blur';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { useTranslation } from 'react-i18next';
 
+interface GenreTrend {
+  category: string;
+  borrow_count: string | number;
+}
+
+interface PeakHour {
+  hour: number;
+  count: number;
+}
+
+interface InventorySuggestion {
+  id: string;
+  suggestion_text: string;
+  suggestion_text_en?: string;
+  suggestion_text_vi?: string;
+  confidence_score: number;
+  type: 'TRANSFER_ADVICE' | 'PREDICTIVE_HOT';
+  book?: { title: string };
+  metadata?: {
+    predicted_demand_increase?: string;
+    priority?: string;
+  };
+}
+
 const { width } = Dimensions.get('window');
 
 export default function LibrarianInsights() {
@@ -152,10 +176,10 @@ export default function LibrarianInsights() {
             <Text style={styles.sectionTitle}>{t('analytics.genre_trends')}</Text>
             <View style={styles.chartCard}>
               <PieChart
-                data={trends?.genres.map((g: any, i: number) => ({
+                data={trends?.genres.map((g: GenreTrend, i: number) => ({
                   name: g.category,
-                  population: parseInt(g.borrow_count),
-                  color: ['#4F8EF7', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6'][i],
+                  population: typeof g.borrow_count === 'string' ? parseInt(g.borrow_count) : g.borrow_count,
+                  color: ['#4F8EF7', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6'][i % 5],
                   legendFontColor: '#FFFFFF',
                   legendFontSize: 12
                 })) || []}
@@ -180,9 +204,9 @@ export default function LibrarianInsights() {
             <View style={styles.chartCard}>
               <BarChart
                 data={{
-                  labels: (peakHours || []).map((p: any) => `${p.hour}h`),
+                  labels: (peakHours || []).map((p: PeakHour) => `${p.hour}h`),
                   datasets: [{
-                    data: (peakHours || []).map((p: any) => p.count)
+                    data: (peakHours || []).map((p: PeakHour) => p.count)
                   }]
                 }}
                 width={width - 48}
@@ -204,8 +228,8 @@ export default function LibrarianInsights() {
             </View>
 
             <Text style={styles.sectionTitle}>{t('analytics.demand_forecast')}</Text>
-            {(suggestions?.filter((s: any) => s.type === 'PREDICTIVE_HOT').length || 0) > 0 ? (
-              suggestions?.filter((s: any) => s.type === 'PREDICTIVE_HOT').map((suggestion: any) => (
+            {(suggestions?.filter((s: InventorySuggestion) => s.type === 'PREDICTIVE_HOT').length || 0) > 0 ? (
+              suggestions?.filter((s: InventorySuggestion) => s.type === 'PREDICTIVE_HOT').map((suggestion: InventorySuggestion) => (
                 <View key={suggestion.id} style={[styles.suggestionCard, { borderColor: '#10B98130' }]}>
                   <View style={[styles.suggestionIcon, { backgroundColor: '#10B98115' }]}>
                     <Ionicons name="flame" size={24} color="#10B981" />
@@ -243,7 +267,7 @@ export default function LibrarianInsights() {
 
             <Text style={[styles.sectionTitle, { marginTop: 24 }]}>{t('analytics.ai_advice')}</Text>
             {suggestions && suggestions.length > 0 ? (
-              suggestions.map((suggestion: any) => (
+              suggestions.map((suggestion: InventorySuggestion) => (
                 <View key={suggestion.id} style={styles.suggestionCard}>
                   <View style={styles.suggestionIcon}>
                     <Ionicons 

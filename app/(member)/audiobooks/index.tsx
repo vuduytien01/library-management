@@ -28,7 +28,7 @@ export default function AudiobookCatalog() {
     }, [refetchInteractions])
   );
 
-  const filteredBooks = books?.filter(b => {
+  const filteredBooks = books?.filter((b: any) => {
     const matchesSearch = b.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
                           b.author?.toLowerCase().includes(searchQuery.toLowerCase());
     if (!matchesSearch) return false;
@@ -43,10 +43,14 @@ export default function AudiobookCatalog() {
   });
 
   const getLocalizedDuration = (dur?: string) => {
-    if (!dur) return '24:00';
+    if (!dur || dur === '0 phút' || dur === '0 minutes') return t("audiobook.updating", "Updating...");
+    
+    // Replace Vietnamese units with translated ones if needed
+    // The duration string from booksService currently defaults to Vietnamese units
     return dur
-      .replace(/giờ/g, t("audiobooks.hours", "hours"))
-      .replace(/phút/g, t("audiobooks.minutes", "minutes"));
+      .replace(/giờ/g, t("audiobook.hours", "giờ"))
+      .replace(/phút/g, t("audiobook.minutes", "phút"))
+      .replace(/giây/g, t("audiobook.seconds", "giây"));
   };
 
   const getLocalizedTitle = (book: any) => {
@@ -54,7 +58,7 @@ export default function AudiobookCatalog() {
     
     // Add language suffix if system is English and book is in Vietnamese
     if (i18n.language === 'en' && book.language === 'vi') {
-      title += ` (${t("audiobooks.audio_vietnamese", "Audio Vietnamese")})`;
+      title += ` (${t("audiobook.audio_vietnamese", "Audio Vietnamese")})`;
     }
     
     return title;
@@ -74,8 +78,8 @@ export default function AudiobookCatalog() {
           <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
         </TouchableOpacity>
         <View>
-          <Text style={styles.title}>{t("audiobooks.title", "Audiobooks")}</Text>
-          <Text style={styles.subtitle}>{t("audiobooks.subtitle", "Nghe sách mọi lúc, mọi nơi")}</Text>
+          <Text style={styles.title}>{t("audiobook.title", "Audiobooks")}</Text>
+          <Text style={styles.subtitle}>{t("audiobook.subtitle", "Nghe sách mọi lúc, mọi nơi")}</Text>
         </View>
       </View>
 
@@ -83,7 +87,7 @@ export default function AudiobookCatalog() {
         <Ionicons name="search" size={20} color="#5A5F7A" style={{ marginLeft: 16 }} />
         <TextInput
           style={styles.searchInput}
-          placeholder={t("audiobooks.search_placeholder", "Tìm sách nói...")}
+          placeholder={t("audiobook.search_placeholder", "Tìm sách nói...")}
           placeholderTextColor="#5A5F7A"
           value={searchQuery}
           onChangeText={setSearchQuery}
@@ -95,19 +99,19 @@ export default function AudiobookCatalog() {
           style={[styles.filterTab, activeTab === 'ALL' && styles.activeTab]} 
           onPress={() => setActiveTab('ALL')}
         >
-          <Text style={[styles.filterText, activeTab === 'ALL' && styles.activeText]}>{t("audiobooks.filter_all", "Tất cả")}</Text>
+          <Text style={[styles.filterText, activeTab === 'ALL' && styles.activeText]}>{t("audiobook.filter_all", "All")}</Text>
         </TouchableOpacity>
         <TouchableOpacity 
           style={[styles.filterTab, activeTab === 'SAVED' && styles.activeTab]} 
           onPress={() => setActiveTab('SAVED')}
         >
-          <Text style={[styles.filterText, activeTab === 'SAVED' && styles.activeText]}>{t("audiobooks.filter_saved", "Đã lưu")}</Text>
+          <Text style={[styles.filterText, activeTab === 'SAVED' && styles.activeText]}>{t("audiobook.filter_saved", "Saved")}</Text>
         </TouchableOpacity>
         <TouchableOpacity 
           style={[styles.filterTab, activeTab === 'LIKED' && styles.activeTab]} 
           onPress={() => setActiveTab('LIKED')}
         >
-          <Text style={[styles.filterText, activeTab === 'LIKED' && styles.activeText]}>{t("audiobooks.filter_liked", "Yêu thích")}</Text>
+          <Text style={[styles.filterText, activeTab === 'LIKED' && styles.activeText]}>{t("audiobook.filter_liked", "Liked")}</Text>
         </TouchableOpacity>
       </View>
 
@@ -116,7 +120,7 @@ export default function AudiobookCatalog() {
           <ActivityIndicator size="large" color="#3A75F2" style={{ marginTop: 50 }} />
         ) : (
           <View style={styles.grid}>
-            {filteredBooks?.map((book, index) => (
+            {filteredBooks?.map((book: any, index: number) => (
               <Animated.View 
                 key={book.id} 
                 entering={FadeInDown.delay(index * 50).duration(500)}

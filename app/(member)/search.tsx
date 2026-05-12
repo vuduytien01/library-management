@@ -14,6 +14,7 @@ import { supabase } from '../../src/api/supabase';
 import { useAccountStatus } from '../../src/hooks/useAccountStatus';
 import { ai } from '../../src/core/ai';
 import { useAuthStore } from '../../src/store/useAuthStore';
+import { useUndoStore } from '../../src/store/useUndoStore';
 
 const { width, height } = Dimensions.get('window');
 
@@ -108,7 +109,7 @@ export default function SearchPage() {
   const defaultCategories = ['Business & Economics', 'Fiction', 'Computers', 'Skills', 'Children\'s Books', 'Foreign Language Study', 'Psychology'];
   const availableCategories = Array.from(new Set([
     ...defaultCategories,
-    ...(allBooks || []).map(b => b.category).filter(Boolean) as string[]
+    ...(allBooks || []).map((b: any) => b.category).filter(Boolean) as string[]
   ])).sort();
 
   useEffect(() => {
@@ -207,8 +208,22 @@ export default function SearchPage() {
   };
 
   const clearHistory = async () => {
+    const previousHistory = [...searchHistory];
+    
+    useUndoStore.getState().queueAction({
+      message: t('admin.clear_search_pending'),
+      onCommit: async () => {
+        // Commit: Actually delete from storage
+        await AsyncStorage.removeItem('search_history');
+      },
+      onUndo: () => {
+        // Undo: Restore to previous state
+        setSearchHistory(previousHistory);
+      }
+    });
+
+    // Optimistic Update
     setSearchHistory([]);
-    await AsyncStorage.removeItem('search_history');
   };
 
   const resetFilters = () => {
@@ -223,7 +238,7 @@ export default function SearchPage() {
 
   const { isLocked, lockReason } = useAccountStatus();
 
-  const filteredBooks = allBooks?.filter(book => {
+  const filteredBooks = allBooks?.filter((book: any) => {
     const googleInfo = (book.google_data as any)?.volumeInfo;
     const translatedCategory = book.category ? String(t('categories.' + book.category)) : '';
 

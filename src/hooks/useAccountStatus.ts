@@ -10,14 +10,17 @@ import { useAuthStore } from '../store/useAuthStore';
  * and force logout if account is locked.
  */
 export function useAccountStatus() {
-  const { session, profile, logout } = useAuthStore();
-  const { t } = useTranslation();
-  const userId = session?.user.id;
+  const userId = useAuthStore((state) => state.session?.user?.id);
+  const profileId = useAuthStore((state) => state.profile?.id);
+  const logout = useAuthStore((state) => state.logout);
+  
   const segments = useSegments();
   const router = useRouter();
+  const { t } = useTranslation();
 
   useEffect(() => {
-    if (!session || !profile || segments[0] === '(auth)') return;
+    let isMounted = true;
+    if (!userId || !profileId || segments[0] === '(auth)') return;
 
     const checkLockStatus = async () => {
       try {
@@ -29,7 +32,7 @@ export function useAccountStatus() {
         
         if (error) throw error;
 
-        if (data?.is_locked) {
+        if (data?.is_locked && isMounted) {
           Alert.alert(
             t('common.account_locked_title') || 'Tài khoản bị khóa',
             data.lock_reason || t('common.account_locked_msg') || 'Tài khoản của bạn đã bị khóa. Vui lòng liên hệ quản trị viên.',
@@ -52,11 +55,8 @@ export function useAccountStatus() {
 
     checkLockStatus();
 
-    // Listen for real-time changes to the user's lock status
-    if (!userId) return;
-
-    const channelId = `account_status_${userId}_${Math.random().toString(36).substring(7)}`;
-    
+    // Listen for real-time changes using a stable channel ID
+    const channelId = `account_status_${userId}`;
     const channel = supabase.channel(channelId);
     
     channel
@@ -69,8 +69,7 @@ export function useAccountStatus() {
           filter: `id=eq.${userId}`,
         },
         (payload) => {
-          console.log('[useAccountStatus] Lock status change detected:', payload.new.is_locked);
-          if (payload.new.is_locked) {
+          if (payload.new.is_locked && isMounted) {
             Alert.alert(
               t('common.account_locked_title') || 'Tài khoản bị khóa',
               payload.new.lock_reason || t('common.account_locked_msg') || 'Tài khoản của bạn vừa bị khóa.',
@@ -90,18 +89,18 @@ export function useAccountStatus() {
       )
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
-          console.log(`[useAccountStatus] Subscribed to channel: ${channelId}`);
+          console.log(`[useAccountStatus] Subscribed to ${channelId}`);
         }
       });
 
     return () => {
-      console.log(`[useAccountStatus] Cleaning up channel: ${channelId}`);
+      isMounted = false;
       supabase.removeChannel(channel);
     };
-  }, [session, profile, segments]);
+  }, [userId, profileId]);
 
   return {
-    isLocked: (profile as any)?.is_locked || false,
-    lockReason: (profile as any)?.lock_reason || null,
+    isLocked: false, // UI shouldn't rely on this for rendering, Alert is sufficient
+    lockReason: null,
   };
 }

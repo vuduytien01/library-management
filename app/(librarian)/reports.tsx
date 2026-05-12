@@ -31,16 +31,16 @@ export default function LibrarianReports() {
 
   // Statistics calculation
   const totalBooks = allBooks?.length || 0;
-  const totalCopies = allBooks?.reduce((acc, b) => acc + (b.total_copies || 0), 0) || 0;
-  const activeBorrows = allBorrows?.filter(b => b.status === 'BORROWED').length || 0;
-  const overdueBorrows = allBorrows?.filter(b => 
+  const totalCopies = allBooks?.reduce((acc: number, b: any) => acc + (b.total_copies || 0), 0) || 0;
+  const activeBorrows = allBorrows?.filter((b: any) => b.status === 'BORROWED').length || 0;
+  const overdueBorrows = allBorrows?.filter((b: any) => 
     b.status === 'BORROWED' && b.due_date && new Date(b.due_date) < new Date()
   ).length || 0;
 
   // Category Distribution for Pie Chart
   const categories: Record<string, number> = {};
-  allBooks?.forEach(b => {
-    const cat = b.category ? t('categories.' + b.category, b.category) : t('common.other');
+  allBooks?.forEach((b: any) => {
+    const cat = b.category ? String(t('categories.' + b.category, b.category)) : String(t('common.other'));
     categories[cat] = (categories[cat] || 0) + 1;
   });
 

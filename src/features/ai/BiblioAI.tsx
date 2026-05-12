@@ -19,6 +19,8 @@ import { ai } from '../../core/ai';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../../store/useAuthStore';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Audio } from 'expo-av';
+import * as Vibration from 'react-native';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -26,6 +28,7 @@ interface Message {
   id: string;
   text: string;
   sender: 'user' | 'ai';
+  audioUri?: string;
   timestamp: Date;
 }
 
@@ -41,19 +44,14 @@ export const BiblioAI: React.FC = () => {
       timestamp: new Date(),
     }
   ]);
-
-  useEffect(() => {
-    setMessages([
-      {
-        id: '1',
-        text: t('ai.welcome_msg', 'Xin chào! Tôi là BiblioAI. Tôi có thể giúp gì cho hành trình đọc sách của bạn hôm nay?'),
-        sender: 'ai',
-        timestamp: new Date()
-      }
-    ]);
-  }, [i18n.language]);
-
   const [loading, setLoading] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const [recording, setRecording] = useState<Audio.Recording | null>(null);
+  const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
+  const [sound, setSound] = useState<Audio.Sound | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pulseAnim = useRef(new Animated.Value(1)).current;
   const profile = useAuthStore((state) => state.profile);
   
   const scrollViewRef = useRef<ScrollView>(null);
@@ -68,13 +66,14 @@ export const BiblioAI: React.FC = () => {
     }).start();
   }, []);
 
-  const handleSend = async () => {
-    if (!input.trim() || loading) return;
+  const handleSend = async (text: string, audioUri?: string) => {
+    if (!text.trim() && !audioUri) return;
 
     const userMsg: Message = {
       id: Date.now().toString(),
-      text: input.trim(),
+      text: text.trim(),
       sender: 'user',
+      audioUri,
       timestamp: new Date(),
     };
 
@@ -83,7 +82,8 @@ export const BiblioAI: React.FC = () => {
     setLoading(true);
 
     try {
-      const response = await ai.askLibrarian(userMsg.text);
+      const promptText = text.trim() || "Người dùng đã gửi một tin nhắn thoại.";
+      const response = await ai.askLibrarian(promptText);
       const aiMsg: Message = {
         id: (Date.now() + 1).toString(),
         text: response,
@@ -97,6 +97,112 @@ export const BiblioAI: React.FC = () => {
       setLoading(false);
     }
   };
+
+  const startRecording = async () => {
+    try {
+      const permission = await Audio.requestPermissionsAsync();
+      if (permission.status !== 'granted') return;
+
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+      });
+
+      const { recording } = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY
+      );
+      
+      setRecording(recording);
+      setIsRecording(true);
+      setRecordingDuration(0);
+      Vibration.Vibration.vibrate(50);
+
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, { toValue: 1.5, duration: 500, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1, duration: 500, useNativeDriver: true })
+        ])
+      ).start();
+
+      timerRef.current = setInterval(() => {
+        setRecordingDuration(prev => prev + 1);
+      }, 1000);
+    } catch (err) {
+      console.error('Failed to start recording', err);
+    }
+  };
+
+  const stopRecording = async () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    
+    setIsRecording(false);
+    pulseAnim.setValue(1);
+    if (!recording) return;
+
+    try {
+      await recording.stopAndUnloadAsync();
+      const uri = recording.getURI();
+      setRecording(null);
+      Vibration.Vibration.vibrate(50);
+
+      if (uri) {
+        setLoading(true);
+        setTimeout(() => {
+          const simulatedText = "Tìm cho tôi sách trinh thám ở London";
+          setLoading(false);
+          handleSend(simulatedText, uri);
+        }, 1200);
+      }
+    } catch (error) {
+      console.error('Failed to stop recording', error);
+    }
+  };
+
+  const playVoiceMessage = async (messageId: string, uri: string) => {
+    try {
+      if (sound) {
+        await sound.unloadAsync();
+        setSound(null);
+        if (playingAudioId === messageId) {
+          setPlayingAudioId(null);
+          return;
+        }
+      }
+
+      const { sound: newSound } = await Audio.Sound.createAsync(
+        { uri },
+        { shouldPlay: true }
+      );
+      
+      setSound(newSound);
+      setPlayingAudioId(messageId);
+
+      newSound.setOnPlaybackStatusUpdate((status) => {
+        if (status.isLoaded && status.didJustFinish) {
+          setPlayingAudioId(null);
+          setSound(null);
+        }
+      });
+    } catch (error) {
+      console.error('Failed to play sound', error);
+    }
+  };
+
+  const formatDuration = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  useEffect(() => {
+    return () => {
+      if (sound) sound.unloadAsync();
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [sound]);
 
   return (
     <>
@@ -160,25 +266,52 @@ export const BiblioAI: React.FC = () => {
               contentContainerStyle={styles.messagesContent}
               onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
             >
-              {messages.map((msg) => (
-                <View 
-                  key={msg.id} 
-                  style={[
-                    styles.messageBubble, 
-                    msg.sender === 'user' ? styles.userBubble : styles.aiBubble
-                  ]}
-                >
-                  <Text style={[
-                    styles.messageText,
-                    msg.sender === 'user' ? styles.userText : styles.aiText
-                  ]}>
-                    {msg.text}
-                  </Text>
-                  <Text style={styles.timestamp}>
-                    {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </Text>
-                </View>
-              ))}
+              {messages.map((msg) => {
+                const isPlaying = playingAudioId === msg.id;
+                return (
+                  <View 
+                    key={msg.id} 
+                    style={[
+                      styles.messageBubble, 
+                      msg.sender === 'user' ? styles.userBubble : styles.aiBubble
+                    ]}
+                  >
+                    {msg.audioUri && (
+                      <View style={styles.audioMessageContainer}>
+                        <TouchableOpacity 
+                          style={styles.playBtn} 
+                          onPress={() => playVoiceMessage(msg.id, msg.audioUri!)}
+                        >
+                          <Ionicons name={isPlaying ? "pause" : "play"} size={18} color="white" />
+                        </TouchableOpacity>
+                        <View style={styles.waveformContainer}>
+                          {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+                            <View 
+                              key={i} 
+                              style={[
+                                styles.waveBar, 
+                                { height: 4 + Math.random() * 12 },
+                                isPlaying && { backgroundColor: 'white' }
+                              ]} 
+                            />
+                          ))}
+                        </View>
+                      </View>
+                    )}
+                    {msg.text && (
+                      <Text style={[
+                        styles.messageText,
+                        msg.sender === 'user' ? styles.userText : styles.aiText
+                      ]}>
+                        {msg.text}
+                      </Text>
+                    )}
+                    <Text style={styles.timestamp}>
+                      {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </Text>
+                  </View>
+                );
+              })}
               {loading && (
                 <View style={[styles.messageBubble, styles.aiBubble, styles.loadingBubble]}>
                   <ActivityIndicator size="small" color="#3A75F2" />
@@ -186,8 +319,27 @@ export const BiblioAI: React.FC = () => {
               )}
             </ScrollView>
 
+            {isRecording && (
+              <View style={styles.recordingOverlay}>
+                <BlurView intensity={30} tint="dark" style={styles.recordingBlur}>
+                  <View style={styles.recordingDotContainer}>
+                    <Animated.View style={[styles.recordingDot, { transform: [{ scale: pulseAnim }] }]} />
+                    <Text style={styles.recordingTimer}>{formatDuration(recordingDuration)}</Text>
+                  </View>
+                  <Text style={styles.recordingHint}>Thả để gửi</Text>
+                </BlurView>
+              </View>
+            )}
+
             {/* Input Area */}
             <View style={styles.inputArea}>
+              <TouchableOpacity 
+                style={[styles.voiceBtn, isRecording && styles.voiceBtnActive]}
+                onPressIn={startRecording}
+                onPressOut={stopRecording}
+              >
+                <Ionicons name={isRecording ? "mic" : "mic-outline"} size={22} color={isRecording ? "#EF4444" : "#8A8F9E"} />
+              </TouchableOpacity>
               <TextInput
                 style={styles.input}
                 placeholder={t('ai.placeholder', 'Nhập câu hỏi cho thủ thư...')}
@@ -197,7 +349,7 @@ export const BiblioAI: React.FC = () => {
                 multiline
               />
               <TouchableOpacity 
-                onPress={handleSend}
+                onPress={() => handleSend(input)}
                 disabled={!input.trim() || loading}
                 style={[styles.sendBtn, (!input.trim() || loading) && styles.sendBtnDisabled]}
               >
@@ -384,5 +536,80 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 10,
     fontWeight: 'bold',
+  },
+  voiceBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#171B2B',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#1F263B',
+  },
+  voiceBtnActive: {
+    borderColor: '#EF4444',
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+  },
+  recordingOverlay: {
+    position: 'absolute',
+    bottom: 80,
+    left: 20,
+    right: 20,
+    zIndex: 100,
+  },
+  recordingBlur: {
+    borderRadius: 15,
+    overflow: 'hidden',
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+  },
+  recordingDotContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  recordingDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#EF4444',
+  },
+  recordingTimer: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  recordingHint: {
+    color: '#8A8F9E',
+    fontSize: 12,
+  },
+  audioMessageContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 8,
+  },
+  playBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  waveformContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  waveBar: {
+    width: 2,
+    backgroundColor: 'rgba(255,255,255,0.4)',
+    borderRadius: 1,
   },
 });

@@ -13,8 +13,9 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { membersService } from "../../src/features/members/members.service";
+import { membersService } from "../../src/features/members/member-service";
 import { DownloadedFile } from "../../src/features/members/members.types";
+import { useUndoStore } from "../../src/store/useUndoStore";
 
 export default function DownloadsScreen() {
   const router = useRouter();
@@ -35,21 +36,19 @@ export default function DownloadsScreen() {
   };
 
   const clearAll = async () => {
-    Alert.alert(
-      "Xóa tất cả",
-      "Bạn có chắc chắn muốn xóa tất cả tệp đã tải xuống? Hành động này không thể hoàn tác.",
-      [
-        { text: "Hủy", style: "cancel" },
-        {
-          text: "Xóa tất cả",
-          style: "destructive",
-          onPress: async () => {
-            await membersService.clearAll();
-            loadDownloads();
-          },
-        },
-      ]
-    );
+    const previousDownloads = [...downloads];
+    
+    useUndoStore.getState().queueAction({
+      message: t('admin.clear_downloads_pending'),
+      onCommit: async () => {
+        await membersService.clearAll();
+      },
+      onUndo: () => {
+        setDownloads(previousDownloads);
+      }
+    });
+
+    setDownloads([]);
   };
 
   useEffect(() => {
@@ -57,21 +56,22 @@ export default function DownloadsScreen() {
   }, []);
 
   const handleDelete = (id: string) => {
-    Alert.alert(
-      "Xóa tệp",
-      "Bạn có chắc chắn muốn xóa tệp đã tải xuống này?",
-      [
-        { text: "Hủy", style: "cancel" },
-        {
-          text: "Xóa",
-          style: "destructive",
-          onPress: async () => {
-            await membersService.deleteDownload(id);
-            loadDownloads();
-          },
-        },
-      ]
-    );
+    const fileToDelete = downloads.find(d => d.id === id);
+    if (!fileToDelete) return;
+
+    const previousDownloads = [...downloads];
+    
+    useUndoStore.getState().queueAction({
+      message: t('admin.delete_download_pending', { title: fileToDelete.title }),
+      onCommit: async () => {
+        await membersService.deleteDownload(id);
+      },
+      onUndo: () => {
+        setDownloads(previousDownloads);
+      }
+    });
+
+    setDownloads(downloads.filter(d => d.id !== id));
   };
 
   const renderItem = ({ item }: { item: DownloadedFile }) => {
@@ -242,3 +242,4 @@ const styles = StyleSheet.create({
   },
   browseBtnText: { color: "white", fontSize: 14, fontWeight: "600" },
 });
+

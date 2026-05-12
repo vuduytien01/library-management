@@ -7,10 +7,12 @@ import { useAuthStore } from '../../src/store/useAuthStore';
 import { logisticsService } from '../../src/services/logisticsService';
 import { Alert } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import { useUndoStore } from '../../src/store/useUndoStore';
 
 export default function AdminInventory() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
+  const { queueAction } = useUndoStore();
   const [isAnalyzing, setIsAnalyzing] = React.useState(false);
 
   const getBranchDisplayName = (name: string) => {
@@ -77,7 +79,7 @@ export default function AdminInventory() {
   };
 
   // 5. Execute Transfer
-  const { mutate: executeTransfer, isPending: isTransferring } = useMutation({
+  const { mutateAsync: executeTransfer, isPending: isTransferring } = useMutation({
     mutationFn: async (suggestion: any) => {
       const { book_isbn, metadata } = suggestion;
       if (!metadata?.from_branch_id || !metadata?.to_branch_id) {
@@ -146,19 +148,14 @@ export default function AdminInventory() {
 
       <TouchableOpacity 
         onPress={() => {
-          Alert.alert(
-            t('admin.transfer_confirm_title'),
-            t('admin.transfer_confirm_msg', { 
-              count: item.metadata?.quantity || 1, 
+          queueAction({
+            message: t('admin.transfer_pending', { 
               title: item.book?.title || item.book_isbn,
               from: getBranchDisplayName(item.metadata?.from_branch),
               to: getBranchDisplayName(item.metadata?.to_branch)
             }),
-            [
-              { text: t('common.cancel'), style: 'cancel' },
-              { text: t('common.confirm'), onPress: () => executeTransfer(item) }
-            ]
-          );
+            onCommit: () => executeTransfer(item)
+          });
         }}
         disabled={isTransferring}
         style={{ 
@@ -188,7 +185,7 @@ export default function AdminInventory() {
       {/* Header */}
       <View style={{ paddingHorizontal: 24, paddingTop: 60, paddingBottom: 20, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <View>
-          <Text style={{ color: '#FFFFFF', fontSize: 24, fontWeight: '700' }}>{t('admin.inventory_title')}</Text>
+          <Text style={{ color: '#FFFFFF', fontSize: 24, fontWeight: '700' }}>{t('tabs.inventory')}</Text>
           <Text style={{ color: '#8B8FA3', fontSize: 14, marginTop: 4 }}>{t('admin.inventory_subtitle')}</Text>
         </View>
         <TouchableOpacity 

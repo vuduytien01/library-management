@@ -263,7 +263,7 @@ export default function CommunityFeedPage() {
                 <Text style={styles.myRankName}>{currentUser.fullName}</Text>
               </View>
               <View style={styles.lbScore}>
-                <Text style={styles.myRankXp}>#{leaderboardData.findIndex(u => u.id === currentUser.id) + 1 || '?'}</Text>
+                <Text style={styles.myRankXp}>#{leaderboardData.findIndex((u: any) => u.id === currentUser.id) + 1 || '?'}</Text>
                 <Text style={styles.myRankXpLabel}>{t('community.rank', 'RANK')}</Text>
               </View>
             </LinearGradient>

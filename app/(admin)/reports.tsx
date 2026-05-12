@@ -52,7 +52,7 @@ export default function ReportsScreen() {
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
-          <Text style={styles.title}>{t('admin.smart_reports', 'Báo cáo thông minh')}</Text>
+          <Text style={styles.title}>{t('tabs.reports')}</Text>
           <Text style={styles.subtitle}>{t('admin.reports_subtitle_month', 'Phân tích hoạt động thư viện tháng {{month}}', { month: selectedMonth })}</Text>
         </View>
 
@@ -81,7 +81,7 @@ export default function ReportsScreen() {
                 <Text style={styles.statValue}>{reportData.borrowCount}</Text>
                 <View style={[styles.trendBadge, { backgroundColor: 'rgba(16, 185, 129, 0.1)' }]}>
                   <Ionicons name="arrow-up" size={12} color="#10B981" />
-                  <Text style={[styles.trendText, { color: '#10B981' }]}>{t('analytics.stable', 'Ổn định')}</Text>
+                  <Text style={[styles.trendText, { color: '#10B981' }]}>{t('analytics.stable')}</Text>
                 </View>
               </View>
 
@@ -115,11 +115,15 @@ export default function ReportsScreen() {
             />
 
             <LogisticsRadar 
-              title={t('admin.branch_distribution', 'Phân phối kho chi nhánh')}
+              title={t('analytics.branch_distribution')}
               data={{
-                labels: i18n.language === 'en' 
-                  ? ["Center", "District 1", "District 7", "Thu Duc", "Binh Thanh"] 
-                  : ["Trung tâm", "Quận 1", "Quận 7", "Thủ Đức", "Bình Thạnh"],
+                labels: [
+                  t('analytics.branches.center'),
+                  t('analytics.branches.district_1'),
+                  t('analytics.branches.district_7'),
+                  t('analytics.branches.thu_duc'),
+                  t('analytics.branches.binh_thanh')
+                ],
                 data: [0.9, 0.6, 0.4, 0.8, 0.5]
               }}
             />

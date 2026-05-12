@@ -47,7 +47,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
   const [sleepTimer, setSleepTimer] = useState<number | null>(null); // minutes
   const [sleepTimerRemaining, setSleepTimerRemaining] = useState<number | null>(null); // seconds
   const playbackKey = `playback_position_${url}`;
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     setupAudio();

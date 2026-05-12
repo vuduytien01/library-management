@@ -214,7 +214,7 @@ export default function AuditLogsScreen() {
             <Ionicons name="shield-checkmark" size={32} color="#3A75F2" />
           </TouchableOpacity>
           <View>
-            <Text style={styles.title}>{t('admin.audit_logs')}</Text>
+            <Text style={styles.title}>{t('tabs.audit')}</Text>
             <Text style={styles.subtitle}>{t('admin.audit_logs_desc')}</Text>
           </View>
         </View>

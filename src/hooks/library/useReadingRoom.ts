@@ -3,7 +3,7 @@ import { supabase } from '../../api/supabase';
 import { useAuthStore } from '../../store/useAuthStore';
 
 export function useReadingRoom(isbn: string) {
-  const { profile } = useAuthStore();
+  const profile = useAuthStore(state => state.profile);
   const [readers, setReaders] = useState<any[]>([]);
   const [reactions, setReactions] = useState<any[]>([]);
   const [liveCount, setLiveCount] = useState(0);

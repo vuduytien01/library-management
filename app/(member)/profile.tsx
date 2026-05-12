@@ -31,6 +31,7 @@ import { DigitalMembershipPass } from "../../src/features/members/components/Dig
 import { OfflineCard } from "../../src/features/members/components/OfflineCard";
 import { useLibrary } from "../../src/hooks/useLibrary";
 import { useAuthStore } from "../../src/store/useAuthStore";
+import { useUndoStore } from "../../src/store/useUndoStore";
 import { useTabBarStore } from "../../src/store/useTabBarStore";
 
 const { width } = Dimensions.get("window");
@@ -503,17 +504,34 @@ export default function ProfileScreen() {
   };
 
   const clearAllGenres = async () => {
+    const previousGenres = [...selectedGenres];
+    
+    useUndoStore.getState().queueAction({
+      message: t('admin.clear_genres_pending'),
+      onCommit: async () => {
+        try {
+          const { error } = await supabase
+            .from("profiles")
+            .update({ favorite_genres: [] })
+            .eq("id", profile?.id);
+          if (error) throw error;
+        } catch (e) {
+          console.error("Error clearing genres:", e);
+          // Revert UI on failure
+          setSelectedGenres(previousGenres);
+          updateProfile({ favoriteGenres: previousGenres });
+          throw e;
+        }
+      },
+      onUndo: () => {
+        setSelectedGenres(previousGenres);
+        updateProfile({ favoriteGenres: previousGenres });
+      }
+    });
+
+    // Optimistic Update
     setSelectedGenres([]);
     updateProfile({ favoriteGenres: [] });
-    try {
-      const { error } = await supabase
-        .from("profiles")
-        .update({ favorite_genres: [] })
-        .eq("id", profile?.id);
-      if (error) throw error;
-    } catch (e) {
-      console.error("Error clearing genres:", e);
-    }
   };
 
   // Data processing for charts
@@ -1262,7 +1280,19 @@ export default function ProfileScreen() {
                     borderWidth: 1,
                     borderColor: "rgba(239, 68, 68, 0.25)",
                   }}
-                  onPress={() => setEditGenres([])}
+                  onPress={() => {
+                    const previousGenres = [...editGenres];
+                    useUndoStore.getState().queueAction({
+                      message: t('admin.clear_genres_pending'),
+                      onCommit: async () => {
+                        // Commit: No specific commit needed as state is saved on handleSaveProfile
+                      },
+                      onUndo: () => {
+                        setEditGenres(previousGenres);
+                      }
+                    });
+                    setEditGenres([]);
+                  }}
                 >
                   <Ionicons
                     name="trash-outline"

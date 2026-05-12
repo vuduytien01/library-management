@@ -51,7 +51,7 @@ export default function ClubDetailScreen() {
   const { bookClubs } = useLibrary();
   const profile = useAuthStore(state => state.profile);
   const { data: clubs } = bookClubs.list();
-  const club = clubs?.find(c => c.id === id);
+  const club = clubs?.find((c: any) => c.id === id);
 
   const { getMessages, sendMessage, sendReaction, lastReaction, typingUsers, onlineCount, setTyping } = useClubChat(id as string);
   const { data: messages, isLoading } = getMessages();

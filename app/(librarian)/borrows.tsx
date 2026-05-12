@@ -5,10 +5,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLibrary } from '../../src/hooks/useLibrary';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
+import { useUndoStore } from '../../src/store/useUndoStore';
+import { useQueryClient } from '@tanstack/react-query';
 
 export default function LibrarianBorrows() {
   const { t } = useTranslation();
   const { borrows } = useLibrary();
+  const queryClient = useQueryClient();
+  const { queueAction } = useUndoStore();
   const { data: allBorrows, isLoading, refetch } = borrows.listAll();
   const approveMutation = borrows.approve;
   const rejectMutation = borrows.reject;
@@ -22,88 +26,95 @@ export default function LibrarianBorrows() {
 
   const [filter, setFilter] = useState('PENDING');
 
-  const filteredData = allBorrows?.filter(b => b.status === filter) || [];
+  const filteredData = allBorrows?.filter((b: any) => b.status === filter) || [];
 
   const handleApprove = (id: string) => {
-    Alert.alert(t('common.confirm'), t('librarian.approve_confirm_msg'), [
-      { text: t('common.cancel'), style: 'cancel' },
-      { 
-        text: t('common.confirm'), 
-        onPress: async () => {
-          try {
-            await approveMutation.mutateAsync(id);
-            if (isMounted) Alert.alert(t('common.success'), t('librarian.approve_success'));
-          } catch (err: any) {
-            if (isMounted) Alert.alert(t('common.error'), err.message);
-          }
-        } 
+    const borrow = allBorrows?.find((b: any) => b.id === id);
+    if (!borrow) return;
+
+    // Optimistic update
+    queryClient.setQueryData(['borrows_list'], (old: any) => 
+      old?.filter((b: any) => b.id !== id)
+    );
+
+    queueAction({
+      message: t('librarian.approve_pending', { title: borrow.book_title }),
+      onCommit: async () => {
+        try {
+          await approveMutation.mutateAsync(id);
+        } catch (err: any) {
+          queryClient.invalidateQueries({ queryKey: ['borrows_list'] });
+          Alert.alert(t('common.error'), err.message);
+        }
+      },
+      onUndo: () => {
+        queryClient.invalidateQueries({ queryKey: ['borrows_list'] });
       }
-    ]);
+    });
   };
 
   const handleReject = (id: string) => {
-    const runReject = async (reason?: string) => {
-      try {
-        await rejectMutation.mutateAsync({ recordId: id, reason: reason || t('librarian.reject_reason_default') });
-        if (isMounted) {
-          if (Platform.OS === 'web') {
-            window.alert(t('librarian.reject_success'));
-          } else {
-            Alert.alert(t('common.success'), t('librarian.reject_success'));
-          }
-        }
-      } catch (err: any) {
-        if (isMounted) {
-          if (Platform.OS === 'web') {
-            window.alert(err.message);
-          } else {
+    const borrow = allBorrows?.find((b: any) => b.id === id);
+    if (!borrow) return;
+
+    const runReject = (reason?: string) => {
+      // Optimistic update
+      queryClient.setQueryData(['borrows_list'], (old: any) => 
+        old?.filter((b: any) => b.id !== id)
+      );
+
+      queueAction({
+        message: t('librarian.reject_pending', { title: borrow.book_title }),
+        onCommit: async () => {
+          try {
+            await rejectMutation.mutateAsync({ recordId: id, reason: reason || t('librarian.reject_reason_default') });
+          } catch (err: any) {
+            queryClient.invalidateQueries({ queryKey: ['borrows_list'] });
             Alert.alert(t('common.error'), err.message);
           }
+        },
+        onUndo: () => {
+          queryClient.invalidateQueries({ queryKey: ['borrows_list'] });
         }
-      }
+      });
     };
 
     if (Platform.OS === 'web') {
       const reason = window.prompt(t('librarian.reject_reason_label'));
-      if (reason !== null) {
-        runReject(reason);
-      }
+      if (reason !== null) runReject(reason);
     } else if (Alert.prompt) {
       Alert.prompt(t('librarian.reject_title'), t('librarian.reject_reason_label'), [
         { text: t('common.cancel'), style: 'cancel' },
-        {
-          text: t('common.confirm'),
-          onPress: (reason?: string) => runReject(reason),
-        }
+        { text: t('common.confirm'), onPress: (reason?: string) => runReject(reason) }
       ]);
     } else {
-      const reason = window.prompt ? window.prompt(t('librarian.reject_reason_label')) : null;
-      if (reason !== null) {
-        runReject(reason);
-      }
+      runReject();
     }
   };
 
   const handleReturn = (isbn: string) => {
-    Alert.alert(t('common.confirm'), t('librarian.return_confirm_msg', { isbn }), [
-      { text: t('common.cancel'), style: 'cancel' },
-      {
-        text: t('common.confirm'),
-        onPress: async () => {
-          try {
-            const result = await returnMutation.mutateAsync(isbn);
-            if (isMounted) {
-              const msg = result.late_fine > 0 
-                ? t('librarian.return_success_fine', { amount: result.late_fine.toLocaleString() })
-                : t('librarian.return_success');
-              Alert.alert(t('common.success'), msg);
-            }
-          } catch (err: any) {
-            if (isMounted) Alert.alert(t('common.error'), err.message);
+    const borrow = allBorrows?.find((b: any) => b.isbn === isbn && b.status === 'BORROWED');
+    
+    queueAction({
+      message: t('librarian.return_pending', { title: borrow?.book?.title || isbn }),
+      onCommit: async () => {
+        try {
+          const result = await returnMutation.mutateAsync(isbn);
+          if (isMounted) {
+            const msg = result.late_fine > 0 
+              ? t('librarian.return_success_fine', { amount: result.late_fine.toLocaleString() })
+              : t('librarian.return_success');
+            Alert.alert(t('common.success'), msg);
           }
+        } catch (err: any) {
+          if (isMounted) Alert.alert(t('common.error'), err.message);
         }
+      },
+      onUndo: () => {
+        // No optimistic update for return yet as it's complex, 
+        // but we can add one if we have a local state to hide it
       }
-    ]);
+    });
   };
 
   const renderItem = ({ item }: { item: any }) => {

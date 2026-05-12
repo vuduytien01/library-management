@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   View, 
   Text, 
@@ -11,107 +11,86 @@ import {
   KeyboardAvoidingView, 
   Platform,
   Animated,
-  Dimensions
+  Dimensions,
+  Vibration
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ai } from '../../core/ai';
-
+import { useSegments } from 'expo-router';
 import { useTranslation } from 'react-i18next';
+import { useAiKernel } from '../../services/ai/useAiKernel';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-interface Message {
-  id: string;
-  text: string;
-  sender: 'user' | 'ai';
-  timestamp: Date;
-}
-
 export const AiAssistant = () => {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const [isVisible, setIsVisible] = useState(false);
   const [input, setInput] = useState('');
-  const [messages, setMessages] = useState<Message[]>([
-    { 
-      id: '1', 
-      text: t('ai.welcome_msg', 'Xin chào! Tôi là BiblioAI. Tôi có thể giúp gì cho hành trình đọc sách của bạn hôm nay?'), 
-      sender: 'ai', 
-      timestamp: new Date() 
-    }
-  ]);
-
-  useEffect(() => {
-    setMessages([
-      {
-        id: '1',
-        text: t('ai.welcome_msg', 'Xin chào! Tôi là BiblioAI. Tôi có thể giúp gì cho hành trình đọc sách của bạn hôm nay?'),
-        sender: 'ai',
-        timestamp: new Date()
-      }
-    ]);
-  }, [i18n.language]);
-
-  const [loading, setLoading] = useState(false);
   
+  const { 
+    mode, 
+    messages, 
+    visualizerData, 
+    startListening, 
+    stopListening, 
+    sendMessage, 
+    cancel 
+  } = useAiKernel();
+
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const scrollViewRef = useRef<ScrollView>(null);
+  const recPulseAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     Animated.loop(
       Animated.sequence([
-        Animated.timing(pulseAnim, {
-          toValue: 1.1,
-          duration: 1500,
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulseAnim, {
-          toValue: 1,
-          duration: 1500,
-          useNativeDriver: true,
-        }),
+        Animated.timing(pulseAnim, { toValue: 1.1, duration: 1500, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 1500, useNativeDriver: true }),
       ])
     ).start();
   }, []);
 
-  const handleSend = async () => {
-    if (!input.trim() || loading) return;
-
-    const userMsg: Message = {
-      id: Date.now().toString(),
-      text: input.trim(),
-      sender: 'user',
-      timestamp: new Date(),
-    };
-
-    setMessages(prev => [...prev, userMsg]);
-    setInput('');
-    setLoading(true);
-
-    try {
-      const response = await ai.askLibrarian(userMsg.text);
-      const aiMsg: Message = {
-        id: (Date.now() + 1).toString(),
-        text: response,
-        sender: 'ai',
-        timestamp: new Date(),
-      };
-      setMessages(prev => [...prev, aiMsg]);
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    if (mode === 'listening') {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(recPulseAnim, { toValue: 1.5, duration: 500, useNativeDriver: true }),
+          Animated.timing(recPulseAnim, { toValue: 1, duration: 500, useNativeDriver: true })
+        ])
+      ).start();
+    } else {
+      recPulseAnim.setValue(1);
     }
+  }, [mode]);
+
+  const handleSend = () => {
+    if (!input.trim()) return;
+    sendMessage(input);
+    setInput('');
   };
+
+  const segments = useSegments() as string[];
+  const isAudiobookPage = segments.includes('audiobooks');
+  const isLoading = mode === 'thinking';
+  const isListening = mode === 'listening';
+  const isSpeaking = mode === 'speaking';
 
   return (
     <>
-      <Animated.View style={[styles.fabContainer, { transform: [{ scale: pulseAnim }] }]}>
+      <Animated.View style={[
+        styles.fabContainer, 
+        isAudiobookPage && { top: 60, bottom: undefined, right: 10 },
+        { transform: [{ scale: pulseAnim }] }
+      ]}>
         <View style={styles.fabRow}>
-          <View style={styles.fabLabelContainer}>
-            <Text style={styles.fabLabel}>{t('ai.ask_assistant', 'Hỏi Trợ lý')}</Text>
-          </View>
+          {!isAudiobookPage && (
+            <View style={styles.fabLabelContainer}>
+              <Text style={styles.fabLabel}>{t('ai.ask_assistant', 'Hỏi Trợ lý')}</Text>
+            </View>
+          )}
           <TouchableOpacity 
-            style={styles.fab} 
+            style={[styles.fab, isAudiobookPage && { width: 40, height: 40, borderRadius: 20 }]} 
             onPress={() => setIsVisible(true)}
             activeOpacity={0.8}
           >
@@ -119,13 +98,12 @@ export const AiAssistant = () => {
               colors={['#3A75F2', '#1E2540']}
               style={styles.fabGradient}
             >
-              <Ionicons name="sparkles" size={20} color="#FFFFFF" />
+              <Ionicons name="sparkles" size={isAudiobookPage ? 16 : 20} color="#FFFFFF" />
             </LinearGradient>
           </TouchableOpacity>
         </View>
       </Animated.View>
 
-      {/* Chat Modal */}
       <Modal
         visible={isVisible}
         animationType="slide"
@@ -145,8 +123,10 @@ export const AiAssistant = () => {
                     <Ionicons name="sparkles" size={14} color="#FFFFFF" />
                   </View>
                   <View>
-                    <Text style={styles.headerTitle}>BiblioAI</Text>
-                    <Text style={styles.headerStatus}>{t('ai.online', 'Trực tuyến')}</Text>
+                    <Text style={styles.headerTitle}>{t('ai.assistant_title', 'BiblioAI Assistant')}</Text>
+                    <Text style={styles.headerStatus}>
+                      {mode === 'idle' ? t('ai.ready', 'Sẵn sàng') : t(`ai.mode.${mode}`, mode)}
+                    </Text>
                   </View>
                 </View>
                 <TouchableOpacity onPress={() => setIsVisible(false)} style={styles.closeBtn}>
@@ -161,31 +141,28 @@ export const AiAssistant = () => {
                 contentContainerStyle={styles.messageListContent}
                 onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
               >
-                {messages.map((msg) => (
+                {messages.map((msg, idx) => (
                   <View 
-                    key={msg.id} 
+                    key={idx} 
                     style={[
                       styles.messageRow, 
-                      msg.sender === 'user' ? styles.userRow : styles.aiRow
+                      msg.role === 'user' ? styles.userRow : styles.aiRow
                     ]}
                   >
                     <View style={[
                       styles.messageBubble,
-                      msg.sender === 'user' ? styles.userBubble : styles.aiBubble
+                      msg.role === 'user' ? styles.userBubble : styles.aiBubble
                     ]}>
                       <Text style={[
                         styles.messageText,
-                        msg.sender === 'user' ? styles.userText : styles.aiText
+                        msg.role === 'user' ? styles.userText : styles.aiText
                       ]}>
-                        {msg.text}
+                        {msg.parts[0].text}
                       </Text>
                     </View>
-                    <Text style={styles.timestamp}>
-                      {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </Text>
                   </View>
                 ))}
-                {loading && (
+                {isLoading && (
                   <View style={styles.aiRow}>
                     <View style={[styles.messageBubble, styles.aiBubble, styles.loadingBubble]}>
                       <ActivityIndicator size="small" color="#3A75F2" />
@@ -194,20 +171,53 @@ export const AiAssistant = () => {
                 )}
               </ScrollView>
 
-              {/* Input */}
+              {/* Visualizer Area */}
+              {(isListening || isSpeaking) && (
+                <View style={styles.visualizerContainer}>
+                  <View style={styles.waveform}>
+                    {visualizerData.map((val, i) => (
+                      <View 
+                        key={i} 
+                        style={[
+                          styles.waveBar, 
+                          { height: Math.max(4, val / 2), backgroundColor: isListening ? '#EF4444' : '#3A75F2' }
+                        ]} 
+                      />
+                    ))}
+                  </View>
+                  <Text style={styles.visualizerText}>
+                    {isListening ? 'Đang nghe...' : 'AI đang nói...'}
+                  </Text>
+                </View>
+              )}
+
+              {/* Input Area */}
               <View style={styles.inputArea}>
+                <TouchableOpacity 
+                  style={[styles.voiceBtn, isListening && styles.voiceBtnActive]}
+                  onPressIn={() => {
+                    Vibration.vibrate(50);
+                    startListening();
+                  }}
+                  onPressOut={() => {
+                    Vibration.vibrate(50);
+                    stopListening();
+                  }}
+                >
+                  <Ionicons name={isListening ? "mic" : "mic-outline"} size={22} color={isListening ? "#EF4444" : "#8A8F9E"} />
+                </TouchableOpacity>
                 <TextInput
                   style={styles.input}
-                  placeholder={t('ai.placeholder', 'Nhập câu hỏi cho thủ thư...')}
+                  placeholder={t('ai.placeholder', 'Nhập câu hỏi...')}
                   placeholderTextColor="#5A5F7A"
                   value={input}
                   onChangeText={setInput}
-                  multiline
+                  onSubmitEditing={handleSend}
                 />
                 <TouchableOpacity 
                   style={[styles.sendBtn, !input.trim() && styles.sendBtnDisabled]} 
                   onPress={handleSend}
-                  disabled={!input.trim() || loading}
+                  disabled={!input.trim() || isLoading}
                 >
                   <Ionicons name="send" size={20} color="#FFFFFF" />
                 </TouchableOpacity>
@@ -305,6 +315,7 @@ const styles = StyleSheet.create({
   headerStatus: {
     color: '#10B981',
     fontSize: 12,
+    textTransform: 'capitalize',
   },
   closeBtn: {
     padding: 4,
@@ -355,10 +366,25 @@ const styles = StyleSheet.create({
   aiText: {
     color: '#E1E4ED',
   },
-  timestamp: {
-    color: '#5A5F7A',
-    fontSize: 10,
-    marginTop: 4,
+  visualizerContainer: {
+    padding: 20,
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.02)',
+  },
+  waveform: {
+    flexDirection: 'row',
+    height: 50,
+    alignItems: 'center',
+    gap: 3,
+  },
+  waveBar: {
+    width: 3,
+    borderRadius: 2,
+  },
+  visualizerText: {
+    color: '#8A8F9E',
+    fontSize: 12,
+    marginTop: 8,
   },
   inputArea: {
     flexDirection: 'row',
@@ -374,7 +400,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 10,
     color: '#FFFFFF',
-    maxHeight: 100,
     borderWidth: 1,
     borderColor: '#1F263B',
   },
@@ -389,5 +414,19 @@ const styles = StyleSheet.create({
   sendBtnDisabled: {
     backgroundColor: '#1E2540',
     opacity: 0.5,
+  },
+  voiceBtn: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: '#171B2B',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#1F263B',
+  },
+  voiceBtnActive: {
+    borderColor: '#EF4444',
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
   },
 });

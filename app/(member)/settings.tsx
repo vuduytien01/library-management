@@ -152,6 +152,7 @@ export default function MetadataSettings() {
               onPress={async () => {
                 await i18n.changeLanguage("vi");
                 await AsyncStorage.setItem("user-language", "vi");
+                useAuthStore.getState().updateLocale("vi");
               }}
               accessibilityRole="button"
               accessibilityLabel={t("settings.select_vi", "Chọn Tiếng Việt")}
@@ -177,6 +178,7 @@ export default function MetadataSettings() {
               onPress={async () => {
                 await i18n.changeLanguage("en");
                 await AsyncStorage.setItem("user-language", "en");
+                useAuthStore.getState().updateLocale("en");
               }}
               accessibilityRole="button"
               accessibilityLabel={t("settings.select_en", "Select English")}

@@ -68,6 +68,21 @@ export interface BranchStock {
   };
 }
 
+export type UserRole = 'MEMBER' | 'LIBRARIAN' | 'ADMIN';
+
+export interface AdminUser {
+  id: string;
+  email: string;
+  fullName: string | null;
+  avatarUrl: string | null;
+  role: UserRole;
+  isLocked: boolean;
+  isSuperAdmin: boolean;
+  xp?: number;
+  level?: number;
+  created_at?: string;
+}
+
 export interface RedistributionSuggestion {
   book_isbn: string;
   book_title: string;

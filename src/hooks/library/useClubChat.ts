@@ -5,7 +5,7 @@ import { useAuthStore } from "../../store/useAuthStore";
 
 export function useClubChat(clubId: string) {
   const queryClient = useQueryClient();
-  const { profile } = useAuthStore();
+  const profile = useAuthStore(state => state.profile);
   const [lastReaction, setLastReaction] = useState<any>(null);
   const [typingUsers, setTypingUsers] = useState<string[]>([]);
   const [onlineCount, setOnlineCount] = useState(0);

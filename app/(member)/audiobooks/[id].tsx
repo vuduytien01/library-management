@@ -1,12 +1,13 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, Dimensions, Share, Modal, FlatList, Platform, ScrollView } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Share, Modal, FlatList, Platform, ScrollView, ActivityIndicator } from 'react-native';
+import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useLibrary, useSocial } from '../../../src/hooks/useLibrary';
+import { useLibrary, useSocial, useAudiobook } from '../../../src/hooks/useLibrary';
 import { LinearGradient } from 'expo-linear-gradient';
-import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withTiming, Easing, interpolate } from 'react-native-reanimated';
+import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withTiming, Easing, interpolate, cancelAnimation } from 'react-native-reanimated';
 import Slider from '@react-native-community/slider';
 import { useTranslation } from 'react-i18next';
 
@@ -20,13 +21,12 @@ export default function AudioPlayerScreen() {
   const { t, i18n } = useTranslation();
   const { id } = useLocalSearchParams();
   const router = useRouter();
-  const { audiobooks } = useLibrary();
-  const { data: book } = audiobooks.getById(id as string);
+  const { data: book } = useAudiobook(id as string);
 
   const getLocalizedTitle = (b: any) => {
     let title = i18n.language === 'en' ? (b.title_en || b.title) : (b.title_vi || b.title);
     if (i18n.language === 'en' && b.language === 'vi') {
-      title += ` (${t("audiobooks.audio_vietnamese", "Audio Vietnamese")})`;
+      title += ` (${t("audiobook.audio_vietnamese", "Audio Vietnamese")})`;
     }
     return title;
   };
@@ -45,165 +45,73 @@ export default function AudioPlayerScreen() {
     return b.narrator_vi || b.narrator;
   };
 
-  const [sound, setSound] = useState<Audio.Sound | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [position, setPosition] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
-  const [sleepTimer, setSleepTimer] = useState<number | null>(null);
+  const { useAudiobookKernel } = useLibrary();
+  const { status, load, toggle, seek, setRate, setSleepTimer } = useAudiobookKernel(id as string);
+  const { isPlaying, position, duration, rate: playbackSpeed, sleepRemaining: sleepTimer, currentChapter: currentChapterIdx, isLoaded } = status;
+
+  const getLocalizedDuration = (dur?: string) => {
+    if (!dur || dur === '0 phút') return t("audiobook.updating", "Updating...");
+    return dur
+      .replace(/giờ/g, t("audiobook.hours", "hours"))
+      .replace(/phút/g, t("audiobook.minutes", "minutes"))
+      .replace(/giây/g, t("audiobook.seconds", "seconds"));
+  };
+
+  const [coverUrl, setCoverUrl] = useState<string | null>(null);
   const [showSleepModal, setShowSleepModal] = useState(false);
   const [showChaptersModal, setShowChaptersModal] = useState(false);
-  const [isLoaded, setIsLoaded] = useState(false);
-  const [currentChapterIdx, setCurrentChapterIdx] = useState<number | null>(null);
   
-  const { isLiked, isBookmarked, toggleLike, toggleBookmark } = useSocial(id as string, 'AUDIOBOOK');
-  
-  const rotation = useSharedValue(0);
-
-  const onPlaybackStatusUpdate = async (status: any) => {
-    if (status.isLoaded) {
-      setPosition(status.positionMillis);
-      setDuration(status.durationMillis || 0);
-      setIsPlaying(status.isPlaying);
-      
-      const actualChapterIndex = currentChapterIdx !== null ? currentChapterIdx : (book?.chapters?.[0]?.index || 1);
-      
-      // Save position every 10 seconds or when finished
-      if (status.positionMillis % 10000 < 500 || status.didJustFinish) {
-        AsyncStorage.setItem(`audio_pos_${id}_${actualChapterIndex}`, status.positionMillis.toString());
-        AsyncStorage.setItem(`audio_chapter_${id}`, actualChapterIndex.toString());
-      }
-
-      // Automatically play next chapter if finished
-      if (status.didJustFinish && book?.chapters) {
-        const sortedChapters = [...book.chapters].sort((a, b) => a.index - b.index);
-        const currentIndexInArray = sortedChapters.findIndex(c => c.index === actualChapterIndex);
-        if (currentIndexInArray !== -1 && currentIndexInArray < sortedChapters.length - 1) {
-           const nextChapter = sortedChapters[currentIndexInArray + 1];
-           setCurrentChapterIdx(nextChapter.index);
-        }
-      }
-    }
-  };
+  const isMounted = useRef(true);
+  const statusCallbackRef = useRef<any>(null);
 
   useEffect(() => {
-    let currentSound: Audio.Sound | null = null;
-    let isMounted = true;
+    isMounted.current = true;
+    return () => { isMounted.current = false; };
+  }, []);
 
-    async function loadSound() {
-      if (!book) return;
+  useEffect(() => {
+    if (book) {
+      setCoverUrl(book.canonical_cover_url || book.cover_url || "https://images.unsplash.com/photo-1544947950-fa07a98d237f?q=80&w=800&auto=format&fit=crop");
+    }
+  }, [book?.id]);
+  
+  const { isLiked, isBookmarked, toggleLike, toggleBookmark } = useSocial(id as string, 'AUDIOBOOK');
+  const rotation = useSharedValue(0);
 
-      let actualChapterIndex = currentChapterIdx;
-      if (actualChapterIndex === null) {
-        const savedChapter = await AsyncStorage.getItem(`audio_chapter_${id}`);
-        actualChapterIndex = savedChapter ? parseInt(savedChapter) : (book.chapters?.[0]?.index || 1);
-        if (isMounted) {
-          setCurrentChapterIdx(actualChapterIndex);
-        }
-      }
-
-      const audioUrl = booksService.getChapterUrl(book, actualChapterIndex!);
-      if (!audioUrl) return;
+  useEffect(() => {
+    async function initAudio() {
+      if (!book?.id) return;
       
-      try {
-        // Get saved position and speed
-        const savedPos = await AsyncStorage.getItem(`audio_pos_${id}_${actualChapterIndex}`);
-        const savedSpeed = await AsyncStorage.getItem(`audio_speed_${id}`);
-        const initialPos = savedPos ? parseInt(savedPos) : 0;
-        const initialSpeed = savedSpeed ? parseFloat(savedSpeed) : 1.0;
-
-        if (isMounted) {
-          setPlaybackSpeed(initialSpeed);
-        }
-
-        const { sound: newSound } = await Audio.Sound.createAsync(
-          { uri: audioUrl },
-          { 
-            shouldPlay: true, 
-            rate: initialSpeed, 
-            shouldCorrectPitch: true,
-            positionMillis: initialPos
-          },
-          onPlaybackStatusUpdate
-        );
-
-        if (!isMounted) {
-          await newSound.unloadAsync();
-          return;
-        }
-
-        currentSound = newSound;
-        setSound(newSound);
-        setIsLoaded(true);
-        setPosition(initialPos);
-      } catch (error) {
-        console.error('Error loading sound', error);
+      let targetChapter = currentChapterIdx;
+      if (targetChapter === null) {
+        const savedChapter = await AsyncStorage.getItem(`audio_chapter_${id}`);
+        targetChapter = savedChapter ? parseInt(savedChapter) : (book.chapters?.[0]?.index || 1);
       }
+
+      load(book, targetChapter);
     }
 
-    if (sound) {
-      sound.unloadAsync().then(loadSound);
-    } else {
-      loadSound();
-    }
-
-    return () => {
-      isMounted = false;
-      if (currentSound) {
-        currentSound.unloadAsync();
-      }
-    };
-  }, [book?.id, currentChapterIdx]);
-
-  const togglePlayback = async () => {
-    if (!sound) return;
-    if (isPlaying) {
-      await sound.pauseAsync();
-    } else {
-      await sound.playAsync();
-    }
-  };
-
-  const handleSeek = async (value: number) => {
-    if (sound) {
-      await sound.setPositionAsync(value * duration);
-    }
-  };
-
-  const formatTime = (millis: number) => {
-    const totalSeconds = millis / 1000;
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = Math.floor(totalSeconds % 60);
-    return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
-  };
+    initAudio();
+  }, [book?.id, id]);
 
   const changeSpeed = async () => {
     const speeds = [1.0, 1.25, 1.5, 2.0, 0.75];
     const currentIndex = speeds.indexOf(playbackSpeed);
     const nextSpeed = speeds[(currentIndex + 1) % speeds.length];
-    setPlaybackSpeed(nextSpeed);
-    await AsyncStorage.setItem(`audio_speed_${id}`, nextSpeed.toString());
-    if (sound) {
-      await sound.setRateAsync(nextSpeed, true);
-    }
+    setRate(nextSpeed);
   };
 
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (sleepTimer !== null && isPlaying) {
-      interval = setInterval(() => {
-        setSleepTimer(prev => {
-          if (prev !== null && prev <= 1) {
-            clearInterval(interval);
-            sound?.pauseAsync();
-            return null;
-          }
-          return prev !== null ? prev - 1 : null;
-        });
-      }, 1000);
+  const formatTime = (millis: number) => {
+    const totalSeconds = Math.floor(millis / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = Math.floor(totalSeconds % 60);
+    
+    if (hours > 0) {
+      return `${hours}:${minutes < 10 ? '0' : ''}${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
     }
-    return () => clearInterval(interval);
-  }, [sleepTimer, isPlaying, sound]);
+    return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+  };
 
   useEffect(() => {
     if (isPlaying) {
@@ -213,7 +121,8 @@ export default function AudioPlayerScreen() {
         false
       );
     } else {
-      rotation.value = rotation.value; // Keep current rotation
+      // Correctly cancel the animation when paused to prevent potential loops
+      cancelAnimation(rotation);
     }
   }, [isPlaying]);
 
@@ -224,7 +133,7 @@ export default function AudioPlayerScreen() {
   const handleShare = async () => {
     try {
       await Share.share({
-        message: t("audiobooks.sharing_message", `Đang nghe "${book?.title}" trên BiblioTech! 🎧`),
+        message: t("audiobook.sharing_message", `Đang nghe "${book?.title}" trên BiblioTech! 🎧`),
         url: book?.source_url
       });
     } catch (error) {
@@ -232,7 +141,23 @@ export default function AudioPlayerScreen() {
     }
   };
 
-  if (!book) return <SafeAreaView style={styles.container} />;
+
+  // Move the conditional rendering to the actual return section below hooks
+  const renderLoading = () => (
+    <SafeAreaView style={styles.container}>
+      <LinearGradient colors={['#1E2540', '#0B0F1A']} style={StyleSheet.absoluteFill} />
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.headerBtn}>
+          <Ionicons name="chevron-down" size={28} color="#FFFFFF" />
+        </TouchableOpacity>
+      </View>
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color="#3A75F2" />
+      </View>
+    </SafeAreaView>
+  );
+
+  if (!book) return renderLoading();
 
   return (
     <SafeAreaView style={styles.container}>
@@ -242,7 +167,7 @@ export default function AudioPlayerScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.headerBtn}>
           <Ionicons name="chevron-down" size={28} color="#FFFFFF" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>{t("audiobooks.now_playing", "Đang phát")}</Text>
+        <Text style={styles.headerTitle}>{t("audiobook.now_playing", "Đang phát")}</Text>
         <TouchableOpacity onPress={handleShare} style={styles.headerBtn}>
           <Ionicons name="share-outline" size={24} color="#FFFFFF" />
         </TouchableOpacity>
@@ -251,11 +176,17 @@ export default function AudioPlayerScreen() {
       <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.diskSection}>
           <Animated.View style={[styles.diskWrapper, animatedDiskStyle]}>
-            <Image 
-              source={(book.canonical_cover_url || book.cover_url) ? { uri: (book.canonical_cover_url || book.cover_url)! } : undefined} 
-              style={styles.diskImage} 
+            <Image
+              source={{ 
+                uri: coverUrl || "https://images.unsplash.com/photo-1544947950-fa07a98d237f?q=80&w=800&auto=format&fit=crop" 
+              }}
+              style={styles.diskImage}
+              contentFit="cover"
+              transition={200}
+              onError={() => {
+                setCoverUrl("https://images.unsplash.com/photo-1544947950-fa07a98d237f?q=80&w=800&auto=format&fit=crop");
+              }}
             />
-            <View style={styles.diskCenter} />
           </Animated.View>
         </View>
 
@@ -264,19 +195,19 @@ export default function AudioPlayerScreen() {
           <Text style={styles.author}>{getLocalizedAuthor(book)}</Text>
           {getLocalizedNarrator(book) && (
             <Text style={styles.narrator}>
-              {t("audiobooks.narrator", "Giọng đọc")}: {getLocalizedNarrator(book)}
+              {t("audiobook.narrator_label", "Giọng đọc")}: {getLocalizedNarrator(book)}
             </Text>
           )}
           
           <View style={styles.interactionRow}>
             <TouchableOpacity onPress={toggleLike} style={styles.interactionBtn}>
               <Ionicons name={isLiked ? "heart" : "heart-outline"} size={26} color={isLiked ? "#EF4444" : "#FFFFFF"} />
-              <Text style={styles.interactionText}>{isLiked ? t("audiobooks.liked", "Đã thích") : t("audiobooks.like", "Thích")}</Text>
+              <Text style={styles.interactionText}>{isLiked ? t("audiobook.liked", "Đã thích") : t("audiobook.like", "Thích")}</Text>
             </TouchableOpacity>
             
             <TouchableOpacity onPress={toggleBookmark} style={styles.interactionBtn}>
               <Ionicons name={isBookmarked ? "bookmark" : "bookmark-outline"} size={24} color={isBookmarked ? "#3A75F2" : "#FFFFFF"} />
-              <Text style={styles.interactionText}>{isBookmarked ? t("audiobooks.saved", "Đã lưu") : t("audiobooks.save", "Lưu lại")}</Text>
+              <Text style={styles.interactionText}>{isBookmarked ? t("audiobook.saved", "Đã lưu") : t("audiobook.save", "Lưu lại")}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -288,7 +219,7 @@ export default function AudioPlayerScreen() {
               minimumValue={0}
               maximumValue={1}
               value={duration > 0 ? position / duration : 0}
-              onSlidingComplete={handleSeek}
+              onSlidingComplete={(val) => seek(val * duration)}
               minimumTrackTintColor="#3A75F2"
               maximumTrackTintColor="#1E2540"
               thumbTintColor="#FFFFFF"
@@ -302,21 +233,21 @@ export default function AudioPlayerScreen() {
           <View style={styles.mainControls}>
             <TouchableOpacity 
               style={styles.subControl}
-              onPress={async () => sound && await sound.setPositionAsync(Math.max(0, position - 15000))}
+              onPress={() => seek(Math.max(0, position - 15000))}
             >
               <Ionicons name="play-back" size={28} color="#8A8F9E" />
             </TouchableOpacity>
             
             <TouchableOpacity 
               style={styles.playBtn} 
-              onPress={togglePlayback}
+              onPress={toggle}
             >
               <Ionicons name={isPlaying ? "pause" : "play"} size={36} color="#FFFFFF" />
             </TouchableOpacity>
 
             <TouchableOpacity 
               style={styles.subControl}
-              onPress={async () => sound && await sound.setPositionAsync(Math.min(duration, position + 15000))}
+              onPress={() => seek(Math.min(duration, position + 15000))}
             >
               <Ionicons name="play-forward" size={28} color="#8A8F9E" />
             </TouchableOpacity>
@@ -355,17 +286,17 @@ export default function AudioPlayerScreen() {
       <Modal visible={showSleepModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.bottomSheet}>
-            <Text style={styles.modalTitle}>{t("audiobooks.sleep_timer", "Hẹn giờ tắt")}</Text>
+            <Text style={styles.modalTitle}>{t("audiobook.sleep_timer", "Hẹn giờ tắt")}</Text>
             {[15, 30, 45, 60].map(mins => (
               <TouchableOpacity 
                 key={mins} 
                 style={styles.modalOption}
                 onPress={() => {
-                  setSleepTimer(mins * 60);
+                  setSleepTimer(mins);
                   setShowSleepModal(false);
                 }}
               >
-                <Text style={styles.optionText}>{mins} {t("audiobooks.minutes_short", "phút")}</Text>
+                <Text style={styles.optionText}>{mins} {t("audiobook.minutes_short", "phút")}</Text>
                 {sleepTimer === mins * 60 && <Ionicons name="checkmark" size={20} color="#3A75F2" />}
               </TouchableOpacity>
             ))}
@@ -376,7 +307,7 @@ export default function AudioPlayerScreen() {
                 setShowSleepModal(false);
               }}
             >
-              <Text style={[styles.optionText, { color: '#EF4444' }]}>{t("audiobooks.turn_off_timer", "Tắt hẹn giờ")}</Text>
+              <Text style={[styles.optionText, { color: '#EF4444' }]}>{t("audiobook.turn_off_timer", "Tắt hẹn giờ")}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.closeModalBtn} onPress={() => setShowSleepModal(false)}>
               <Text style={styles.closeModalText}>{t("audiobooks.close", "Đóng")}</Text>
@@ -389,30 +320,30 @@ export default function AudioPlayerScreen() {
       <Modal visible={showChaptersModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.bottomSheet}>
-            <Text style={styles.modalTitle}>{t("audiobooks.chapters", "Danh sách chương")}</Text>
+            <Text style={styles.modalTitle}>{t("audiobook.chapters", "Danh sách chương")}</Text>
             <FlatList
-              data={book?.chapters?.length ? [...book.chapters].sort((a,b) => a.index - b.index) : [{ index: 1, title: t("audiobooks.full_book", "Toàn bộ sách"), duration_seconds: null }]}
+              data={book?.chapters?.length ? [...book.chapters].sort((a,b) => a.index - b.index) : [{ index: 1, title: t("audiobook.full_book", "Toàn bộ sách"), duration_seconds: null }]}
               keyExtractor={item => item.index.toString()}
               renderItem={({ item }) => {
                 const isActive = (currentChapterIdx !== null ? currentChapterIdx : (book?.chapters?.[0]?.index || 1)) === item.index;
                 return (
                   <TouchableOpacity 
                     style={[styles.modalOption, isActive && { backgroundColor: 'rgba(58, 117, 242, 0.1)' }]}
-                    onPress={async () => {
+                    onPress={() => {
                       if (!isActive) {
-                         setCurrentChapterIdx(item.index);
+                         load(book, item.index);
                       }
                       setShowChaptersModal(false);
                     }}
                   >
                     <Text style={[styles.optionText, isActive && { color: '#3A75F2', fontWeight: 'bold' }]}>{item.title}</Text>
-                    {!!item.duration_seconds && <Text style={styles.chapterTime}>{booksService.formatDuration(item.duration_seconds)}</Text>}
+                    {!!item.duration_seconds && <Text style={styles.chapterTime}>{getLocalizedDuration(booksService.formatDuration(item.duration_seconds))}</Text>}
                   </TouchableOpacity>
                 );
               }}
             />
             <TouchableOpacity style={styles.closeModalBtn} onPress={() => setShowChaptersModal(false)}>
-              <Text style={styles.closeModalText}>{t("audiobooks.close", "Đóng")}</Text>
+              <Text style={styles.closeModalText}>{t("audiobook.close", "Đóng")}</Text>
             </TouchableOpacity>
           </View>
         </View>

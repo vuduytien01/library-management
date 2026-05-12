@@ -227,7 +227,15 @@ export const adminService = {
       method: 'GET'
     });
     if (error) throw error;
-    return data;
+    
+    // Map snake_case to camelCase for UI consistency
+    return (data || []).map((user: any) => ({
+      ...user,
+      fullName: user.full_name,
+      avatarUrl: user.avatar_url,
+      isLocked: user.is_locked,
+      isSuperAdmin: user.is_super_admin
+    }));
   },
 
   async createUser(userData: any) {
@@ -255,15 +263,49 @@ export const adminService = {
       }
     });
     if (error) throw error;
+    
+    // Log the change if we have an actorId
+    if (userData.actorId) {
+      await this.log({
+        actorId: userData.actorId,
+        action: 'USER_UPDATE',
+        targetId: userId,
+        metadata: { 
+          updatedFields: Object.keys(userData).filter(k => k !== 'actorId'),
+          ...userData 
+        },
+        severity: 'INFO'
+      });
+    }
+
+    // Map result if available
+    if (data?.user) {
+      return {
+        ...data.user,
+        fullName: data.user.full_name,
+        avatarUrl: data.user.avatar_url,
+        isLocked: data.user.is_locked
+      };
+    }
     return data;
   },
 
-  async deleteUser(userId: string) {
+  async deleteUser(userId: string, actorId?: string) {
     const { data, error } = await supabase.functions.invoke('admin-manager/delete-user', {
       method: 'DELETE',
       body: { userId }
     });
     if (error) throw error;
+
+    if (actorId) {
+      await this.log({
+        actorId,
+        action: 'USER_DELETE',
+        targetId: userId,
+        severity: 'WARNING'
+      });
+    }
+
     return data;
   }
 };

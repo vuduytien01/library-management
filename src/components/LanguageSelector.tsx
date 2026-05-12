@@ -3,13 +3,19 @@ import { TouchableOpacity, Text, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
 
+import { useAuthStore } from '../store/useAuthStore';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 export const LanguageSelector = () => {
   const { i18n } = useTranslation();
+  const updateLocale = useAuthStore((state) => state.updateLocale);
   const currentLang = i18n.language;
 
-  const toggleLanguage = () => {
+  const toggleLanguage = async () => {
     const nextLang = currentLang === 'vi' ? 'en' : 'vi';
-    i18n.changeLanguage(nextLang);
+    await i18n.changeLanguage(nextLang);
+    await AsyncStorage.setItem('user-language', nextLang);
+    updateLocale(nextLang);
   };
 
   return (

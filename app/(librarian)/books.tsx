@@ -7,10 +7,12 @@ import { supabase } from '@/src/api/supabase';
 import { useLibrary, Book } from '@/src/hooks/useLibrary';
 import { BookItem } from '@/src/features/books/components/BookItem';
 import { RatingPicker } from '@/src/features/books/components/RatingPicker';
+import { useUndoStore } from '@/src/store/useUndoStore';
 
 export default function LibrarianBooks() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
+  const { queueAction } = useUndoStore();
   const { useBooks, syncBook } = useLibrary();
   const { data: books, isLoading } = useBooks();
 
@@ -253,14 +255,22 @@ export default function LibrarianBooks() {
               onEdit={handleEdit}
               onRatingPress={handleEdit} 
               onDelete={(item: Book) => {
-                Alert.alert(t('librarian.delete_confirm'), t('librarian.delete_confirm_msg'), [
-                  { text: t('common.cancel') },
-                  { text: t('common.confirm'), style: 'destructive', onPress: () => {
-                    supabase.from('books').delete().eq('isbn', item.isbn).then(() => {
+                queueAction({
+                  message: t("librarian.book_deletion_pending", { title: item.title }),
+                  onCommit: async () => {
+                    try {
+                      const { error } = await supabase.from('books').delete().eq('isbn', item.isbn);
+                      if (error) throw error;
                       queryClient.invalidateQueries({ queryKey: ['books'] });
-                    });
-                  }}
-                ]);
+                    } catch (error: any) {
+                      Alert.alert(t('common.error'), error.message);
+                    }
+                  },
+                  onUndo: () => {
+                    // No action needed for undo as we didn't do optimistic delete yet
+                    // But maybe we should?
+                  }
+                });
               }}
             />
           ))

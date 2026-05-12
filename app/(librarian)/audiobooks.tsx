@@ -10,7 +10,7 @@ export default function LibrarianAudiobooks() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const { audiobooks } = useContent();
-  const { data: audiobookList, isLoading } = audiobooks.list(100);
+  const { data: audiobookList, isLoading } = audiobooks.list();
 
   const [modalVisible, setModalVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');

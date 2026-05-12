@@ -1,6 +1,7 @@
 import * as CryptoJS from 'crypto-js';
 import * as Sharing from 'expo-sharing';
 import { Alert, Platform } from 'react-native';
+import { membersService } from '../features/members/member-service';
 import { haptics } from './haptics';
 
 const SYSTEM_HMAC_SECRET = 'library_system_secure_secret_2026';

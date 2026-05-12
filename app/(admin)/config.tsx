@@ -94,7 +94,7 @@ export default function AdminConfig() {
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll}>
         <View style={styles.header}>
-          <Text style={styles.title}>{t('config.system_config')}</Text>
+          <Text style={styles.title}>{t('tabs.config')}</Text>
           <Text style={styles.subtitle}>
             {t('config.system_config_desc')}
           </Text>

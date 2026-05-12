@@ -1,31 +1,28 @@
 import { Ionicons } from "@expo/vector-icons";
+import { useAccountStatus } from "../../src/hooks/useAccountStatus";
 import { Redirect, Tabs } from "expo-router";
 import { View } from "react-native";
 import { useAuthStore } from "../../src/store/useAuthStore";
 import ErrorBoundary from "../../src/components/ErrorBoundary";
 import { useTranslation } from "react-i18next";
 import { useTabBarStore } from "../../src/store/useTabBarStore";
-import { BiblioAI } from "../../src/features/ai/BiblioAI";
 
 import { useSegments } from "expo-router";
 
 export default function LibrarianLayout() {
   const session = useAuthStore((state) => state.session);
   const { t } = useTranslation();
+
+
   const segments = useSegments();
   const isTabBarVisible = useTabBarStore((state) => state.isVisible);
 
   const isMainScreen = segments.length === 1 || String(segments[segments.length - 1]) === 'index' || (segments.length === 2 && String(segments[1]) === '');
 
-  if (!session) {
-    return <Redirect href="/(auth)/login" />;
-  }
-
   return (
     <ErrorBoundary>
       <View style={{ flex: 1 }}>
         <Tabs
-          key={t('tabs.home')}
           screenOptions={{
             headerShown: false,
             tabBarStyle: {
@@ -110,7 +107,6 @@ export default function LibrarianLayout() {
           <Tabs.Screen name="sources" options={{ href: null }} />
           <Tabs.Screen name="audiobooks" options={{ href: null }} />
         </Tabs>
-        <BiblioAI />
       </View>
     </ErrorBoundary>
   );

@@ -1,5 +1,6 @@
 import { supabase } from "@/src/api/supabase";
 import { LanguageMenuToggle } from "@/src/components/LanguageSwitcher";
+import { AdminUser, UserRole } from "@/src/features/admin/admin.types";
 import { adminService } from "@/src/features/admin/admin.service";
 import { booksService } from "@/src/features/books/books.service";
 import { useAuthStore } from "@/src/store/useAuthStore";
@@ -26,6 +27,7 @@ import {
   View,
 } from "react-native";
 import Animated, { FadeInUp } from "react-native-reanimated";
+import { useUndoStore } from "@/src/store/useUndoStore";
 
 // Removed unused width constant
 
@@ -43,6 +45,8 @@ export default function AdminDashboard() {
   const [showEnrichModal, setShowEnrichModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState<any>(null);
   const [isRoleModalVisible, setIsRoleModalVisible] = useState(false);
+  const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<any>(null);
 
   const pickAvatar = async () => {
     try {
@@ -105,7 +109,7 @@ export default function AdminDashboard() {
     }
   };
 
-  const { data: users, isLoading } = useQuery({
+  const { data: users, isLoading } = useQuery<AdminUser[]>({
     queryKey: ["admin_users"],
     queryFn: () => adminService.listUsers(),
   });
@@ -158,21 +162,147 @@ export default function AdminDashboard() {
   };
 
   const updateRole = useMutation({
-    mutationFn: ({ userId, newRole }: { userId: string; newRole: string }) =>
-      adminService.updateUser(userId, { role: newRole }),
-    onSuccess: () => {
+    mutationFn: ({ userId, newRole, actorId }: { userId: string; newRole: string; actorId?: string }) =>
+      adminService.updateUser(userId, { role: newRole, actorId }),
+    onSuccess: (data: any) => {
       showAlert(t("common.success"), t("librarian.user_updated"));
       queryClient.invalidateQueries({ queryKey: ["admin_users"] });
+      setIsRoleModalVisible(false);
     },
+    onError: (error: any) => {
+      showAlert(t("common.error"), error.message || t("messages.update_failed", "Failed to update role"));
+    }
   });
+
+  const { queueAction } = useUndoStore();
 
   const deleteUser = useMutation({
     mutationFn: (userId: string) => adminService.deleteUser(userId),
+    onMutate: async (userId) => {
+      // Optimistically hide the user
+      await queryClient.cancelQueries({ queryKey: ["admin_users"] });
+      const previousUsers = queryClient.getQueryData<AdminUser[]>(["admin_users"]);
+      queryClient.setQueryData<AdminUser[]>(["admin_users"], (old) => 
+        old?.filter((u) => u.id !== userId) || []
+      );
+      return { previousUsers };
+    },
     onSuccess: () => {
-      showAlert(t("common.success"), t("librarian.user_deleted"));
+      queryClient.invalidateQueries({ queryKey: ["admin_users_count"] });
+    },
+    onError: (error: any, _userId, context: any) => {
+      if (context?.previousUsers) {
+        queryClient.setQueryData(["admin_users"], context.previousUsers);
+      }
+      showAlert(t("common.error"), error.message || t("messages.delete_failed", "Failed to delete user"));
+    }
+  });
+
+  const confirmDeleteUser = (user: any) => {
+    setIsDeleteModalVisible(false);
+    
+    // 1. Store previous state for possible undo
+    const previousUsers = queryClient.getQueryData(["admin_users"]);
+    
+    // 2. Optimistically hide immediately when queued
+    queryClient.setQueryData(["admin_users"], (old: any) => 
+      old?.filter((u: any) => u.id !== user.id)
+    );
+
+    queueAction({
+      message: t("admin.user_deletion_pending", { name: user.fullName || user.email }),
+      onCommit: async () => { deleteUser.mutate(user.id, profile?.id as any); },
+      onUndo: () => {
+        // 3. Restore from previous state if undo is clicked
+        if (previousUsers) {
+          queryClient.setQueryData(["admin_users"], previousUsers);
+        } else {
+          queryClient.invalidateQueries({ queryKey: ["admin_users"] });
+        }
+      }
+    });
+  };
+
+  const confirmUpdateRole = (user: any, newRole: string) => {
+    setIsRoleModalVisible(false);
+    const previousUsers = queryClient.getQueryData(["admin_users"]);
+
+    // Optimistically update
+    queryClient.setQueryData(["admin_users"], (old: any) => 
+      old?.map((u: any) => u.id === user.id ? { ...u, role: newRole } : u)
+    );
+
+    queueAction({
+      message: t("admin.role_update_pending", { name: user.fullName || user.email, role: t(`roles.${newRole.toLowerCase()}`) }),
+      onCommit: async () => { updateRole.mutate({ userId: user.id, newRole, actorId: profile?.id } as any); },
+      onUndo: () => {
+        if (previousUsers) {
+          queryClient.setQueryData(["admin_users"], previousUsers);
+        } else {
+          queryClient.invalidateQueries({ queryKey: ["admin_users"] });
+        }
+      }
+    });
+  };
+
+  const confirmToggleLock = (user: any) => {
+    const isLocked = !user.isLocked;
+    const previousUsers = queryClient.getQueryData(["admin_users"]);
+
+    // Optimistically update
+    queryClient.setQueryData(["admin_users"], (old: any) => 
+      old?.map((u: any) => u.id === user.id ? { ...u, isLocked } : u)
+    );
+
+    queueAction({
+      message: isLocked 
+        ? t("admin.lock_pending", { name: user.fullName || user.email })
+        : t("admin.unlock_pending", { name: user.fullName || user.email }),
+      onCommit: async () => { toggleLock.mutate({ userId: user.id, isLocked, actorId: profile?.id } as any); },
+      onUndo: () => {
+        if (previousUsers) {
+          queryClient.setQueryData(["admin_users"], previousUsers);
+        } else {
+          queryClient.invalidateQueries({ queryKey: ["admin_users"] });
+        }
+      }
+    });
+  };
+
+  const toggleLock = useMutation({
+    mutationFn: ({ userId, isLocked, actorId }: { userId: string; isLocked: boolean; actorId?: string }) =>
+      adminService.updateUser(userId, { isLocked, actorId }),
+    onMutate: async ({ userId, isLocked }) => {
+      // Optimistically update the UI
+      await queryClient.cancelQueries({ queryKey: ["admin_users"] });
+      const previousUsers = queryClient.getQueryData(["admin_users"]);
+      
+      queryClient.setQueryData(["admin_users"], (old: any) => 
+        old?.map((u: any) => u.id === userId ? { ...u, isLocked } : u)
+      );
+      
+      return { previousUsers };
+    },
+    onSuccess: (data: any) => {
+      const msg = data.isLocked 
+        ? t("admin.user_locked", "Đã khóa tài khoản") 
+        : t("admin.user_unlocked", "Đã mở khóa tài khoản");
+      // Use a less intrusive toast if possible, but showAlert is fine for now
+      // showAlert(t("common.success"), msg);
       queryClient.invalidateQueries({ queryKey: ["admin_users"] });
     },
+    onError: (error: any, _vars, context: any) => {
+      if (context?.previousUsers) {
+        queryClient.setQueryData(["admin_users"], context.previousUsers);
+      }
+      showAlert(t("common.error"), error.message || t("messages.update_failed", "Failed to update user"));
+    }
   });
+
+  const handleDeleteUser = (user: any) => {
+    setUserToDelete(user);
+    setIsDeleteModalVisible(true);
+  };
 
   const handleRoleChange = (user: any) => {
     setSelectedUser(user);
@@ -212,7 +342,7 @@ export default function AdminDashboard() {
       onPress: () => router.push("/(admin)/system"),
     },
     {
-      label: t("admin.ai_enrich", "AI Enrich"),
+      label: t("admin.ai_assistant_short", "AI Assistant"),
       value: "AUTO",
       icon: "sparkles",
       bgColor: "#8B5CF6",
@@ -220,7 +350,7 @@ export default function AdminDashboard() {
       onPress: () => setShowEnrichModal(true),
     },
     {
-      label: t("audiobooks.title", "Sách nói"),
+      label: t("audiobook.title", "Audiobooks"),
       value: "PLAY",
       icon: "headset",
       bgColor: "#EC4899",
@@ -248,31 +378,6 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleDeleteUser = (userId: string) => {
-    const title = t("common.confirm");
-    const msg = t("librarian.delete_confirm_msg_user", "Bạn có chắc chắn muốn xóa người dùng này khỏi hệ thống?");
-    
-    if (Platform.OS === "web") {
-      if (window.confirm(msg)) {
-        deleteUser.mutate(userId);
-      }
-      return;
-    }
-
-    Alert.alert(
-      title,
-      msg,
-      [
-        { text: t("common.cancel"), style: "cancel" },
-        {
-          text: t("common.delete"),
-          style: "destructive",
-          onPress: () => deleteUser.mutate(userId),
-        },
-      ],
-    );
-  };
-
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#0F121D" />
@@ -284,8 +389,8 @@ export default function AdminDashboard() {
         {/* Header Section with Profile Dropdown */}
         <View style={styles.header}>
           <View>
-            <Text style={styles.welcome}>{t("roles.admin")}</Text>
-            <Text style={styles.name}>{profile?.fullName || "Admin"}</Text>
+            <Text style={styles.title}>{t('tabs.dashboard')}</Text>
+            <Text style={styles.subtitle}>{profile?.fullName || "Admin"}</Text>
           </View>
           <View style={styles.headerActions}>
             <TouchableOpacity
@@ -482,14 +587,18 @@ export default function AdminDashboard() {
           {isLoading ? (
             <Text style={styles.loadingText}>{t("messages.loading")}</Text>
           ) : Array.isArray(users) && users.length > 0 ? (
-            users.map((item: any) => (
-              <UserCard
-                key={item.id}
-                item={item}
-                onEdit={() => handleRoleChange(item)}
-                onDelete={() => handleDeleteUser(item.id)}
-              />
-            ))
+              users.map((item: any) => (
+                <UserCard
+                  key={item.id}
+                  item={item}
+                  onEdit={() => handleRoleChange(item)}
+                  onDelete={() => handleDeleteUser(item)}
+                  onToggleLock={() => confirmToggleLock(item)}
+                  isLocking={toggleLock.isPending && toggleLock.variables?.userId === item.id}
+                  currentUserId={profile?.id}
+                  profile={profile}
+                />
+              ))
           ) : (
             <Text style={styles.loadingText}>{t("messages.no_results")}</Text>
           )}
@@ -636,10 +745,12 @@ export default function AdminDashboard() {
 
             <View style={styles.roleOptions}>
               {[
-                { role: "MEMBER", label: t("roles.member"), icon: "person-outline" },
-                { role: "LIBRARIAN", label: t("roles.librarian"), icon: "library-outline" },
-                { role: "ADMIN", label: t("roles.admin"), icon: "shield-checkmark-outline" },
-              ].map((r) => (
+                { role: "MEMBER" as UserRole, label: t("roles.member"), icon: "person-outline" },
+                { role: "LIBRARIAN" as UserRole, label: t("roles.librarian"), icon: "library-outline" },
+                { role: "ADMIN" as UserRole, label: t("roles.admin"), icon: "shield-checkmark-outline" },
+              ]
+              .filter(r => profile?.is_super_admin || r.role === 'MEMBER')
+              .map((r) => (
                 <TouchableOpacity
                   key={r.role}
                   style={[
@@ -647,22 +758,30 @@ export default function AdminDashboard() {
                     selectedUser?.role === r.role && styles.roleOptionSelected,
                   ]}
                   onPress={() => {
-                    updateRole.mutate({ userId: selectedUser.id, newRole: r.role });
-                    setIsRoleModalVisible(false);
+                    if (updateRole.isPending) return;
+                    confirmUpdateRole(selectedUser, r.role);
                   }}
+                  disabled={updateRole.isPending}
                 >
                   <View style={[styles.roleIconBox, selectedUser?.role === r.role && styles.roleIconBoxSelected]}>
-                    <Ionicons 
-                      name={r.icon as any} 
-                      size={20} 
-                      color={selectedUser?.role === r.role ? "#FFFFFF" : "#8A8F9E"} 
-                    />
+                    {updateRole.isPending && selectedUser?.role !== r.role ? (
+                      <ActivityIndicator size="small" color="#3A75F2" />
+                    ) : (
+                      <Ionicons 
+                        name={r.icon as any} 
+                        size={20} 
+                        color={selectedUser?.role === r.role ? "#FFFFFF" : "#8A8F9E"} 
+                      />
+                    )}
                   </View>
                   <Text style={[styles.roleOptionText, selectedUser?.role === r.role && styles.roleOptionTextSelected]}>
                     {r.label}
                   </Text>
-                  {selectedUser?.role === r.role && (
+                  {selectedUser?.role === r.role && !updateRole.isPending && (
                     <Ionicons name="checkmark-circle" size={20} color="#3A75F2" />
+                  )}
+                  {updateRole.isPending && selectedUser?.role === r.role && (
+                    <ActivityIndicator size="small" color="#3A75F2" />
                   )}
                 </TouchableOpacity>
               ))}
@@ -677,6 +796,51 @@ export default function AdminDashboard() {
           </View>
         </View>
       </Modal>
+
+      {/* Delete Confirmation Modal - Premium Look */}
+      <Modal visible={isDeleteModalVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.roleModalContent, { borderTopWidth: 4, borderTopColor: "#FF4757" }]}>
+            <View style={styles.roleModalHeader}>
+              <View style={[styles.roleIconBox, { backgroundColor: "rgba(255, 71, 87, 0.12)", width: 64, height: 64, borderRadius: 32, marginBottom: 20 }]}>
+                <Ionicons name="trash" size={32} color="#FF4757" />
+              </View>
+              <Text style={styles.roleModalTitle}>{t("common.confirm")}</Text>
+              <Text style={[styles.roleModalUser, { color: "#8A8F9E", textAlign: "center", paddingHorizontal: 20, lineHeight: 22 }]}>
+                {t("admin.delete_confirm_with_undo", "Người dùng sẽ bị xóa. Bạn có 5 giây để hoàn tác sau khi xác nhận.")}
+              </Text>
+              <View style={{ backgroundColor: 'rgba(255, 255, 255, 0.05)', padding: 16, borderRadius: 12, marginTop: 20, width: '100%', alignItems: 'center' }}>
+                <Text style={{ color: '#FFFFFF', fontWeight: "bold", fontSize: 16 }}>
+                  {userToDelete?.fullName}
+                </Text>
+                <Text style={{ color: '#5A5F7A', fontSize: 12, marginTop: 4 }}>
+                  {userToDelete?.email}
+                </Text>
+              </View>
+            </View>
+
+            <View style={{ gap: 12, marginTop: 8 }}>
+              <TouchableOpacity
+                onPress={() => confirmDeleteUser(userToDelete)}
+                disabled={deleteUser.isPending}
+                style={[styles.roleOption, { backgroundColor: "#FF4757", justifyContent: "center" }]}
+              >
+                <Text style={[styles.roleOptionText, { color: "#FFFFFF", flex: 0, fontWeight: '700' }]}>
+                  {t("common.delete")}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => setIsDeleteModalVisible(false)}
+                disabled={deleteUser.isPending}
+                style={styles.roleCancelBtn}
+              >
+                <Text style={styles.roleCancelText}>{t("common.cancel")}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -685,60 +849,132 @@ const UserCard = ({
     item,
     onEdit,
     onDelete,
+    onToggleLock,
+    isLocking,
+    currentUserId,
+    profile,
   }: {
-    item: any;
+    item: AdminUser;
     onEdit: () => void;
     onDelete: () => void;
+    onToggleLock: () => void;
+    isLocking?: boolean;
+    currentUserId?: string;
+    profile?: any;
   }) => {
     const { t } = useTranslation();
+    const isSelf = item.id === currentUserId;
+    
     return (
-      <View style={styles.userCard}>
+      <Animated.View 
+        entering={FadeInUp.delay(100)}
+        style={[styles.userCard, item.isLocked && { opacity: 0.8 }]}
+      >
         <View style={styles.userAvatar}>
-          <Text style={styles.avatarText}>
-            {item.fullName?.charAt(0) || "U"}
-          </Text>
+          {item.avatarUrl ? (
+            <Image source={{ uri: item.avatarUrl }} style={styles.avatarImg} />
+          ) : (
+            <Text style={styles.avatarText}>
+              {item.fullName?.charAt(0) || "U"}
+            </Text>
+          )}
+          <View style={[
+            styles.statusIndicator, 
+            { backgroundColor: item.isLocked ? '#94A3B8' : (item.role === 'ADMIN' ? '#FFD43B' : '#4CD137') }
+          ]} />
         </View>
         <View style={styles.userInfo}>
-          <Text style={styles.userName}>{item.fullName}</Text>
-          <View style={styles.roleBadge}>
-            <Text style={styles.roleText}>
-              {item.role
-                ? t(`roles.${item.role.toLowerCase()}`)?.toUpperCase()
-                : ""}
-            </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Text style={styles.userName} numberOfLines={1}>{item.fullName || item.email}</Text>
+            {item.isLocked && (
+              <Ionicons name="lock-closed" size={12} color="#FF4757" style={{ marginLeft: 4 }} />
+            )}
+          </View>
+          <View style={styles.userMeta}>
+            <View style={[styles.roleBadge, item.isSuperAdmin && { backgroundColor: 'rgba(168, 85, 247, 0.1)' }]}>
+              <Text style={[styles.roleText, item.isSuperAdmin && { color: '#A855F7' }]}>
+                {item.isSuperAdmin ? "SUPER ADMIN" : (item.role
+                  ? t(`roles.${item.role.toLowerCase()}`)?.toUpperCase()
+                  : "")}
+              </Text>
+            </View>
+            {item.email && (
+              <Text style={styles.userEmail} numberOfLines={1}>{item.email}</Text>
+            )}
           </View>
         </View>
         <View style={styles.userCardActions}>
-          <TouchableOpacity 
-            onPress={() => {
-              console.log("Edit pressed for user:", item.id);
-              onEdit();
-            }} 
-            style={styles.editBtn}
-            activeOpacity={0.7}
-            hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
-          >
-            <Ionicons name="settings-outline" size={18} color="#3A75F2" />
-          </TouchableOpacity>
-          <TouchableOpacity 
-            onPress={() => {
-              console.log("Delete pressed for user:", item.id);
-              onDelete();
-            }} 
-            style={styles.deleteBtn}
-            activeOpacity={0.7}
-            hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
-          >
-            <Ionicons name="trash-outline" size={18} color="#FF6B6B" />
-          </TouchableOpacity>
+          {!isSelf && !item.isSuperAdmin && (
+            <>
+              {(profile?.is_super_admin || (item.role !== 'ADMIN' && item.role !== 'LIBRARIAN')) && (
+                <TouchableOpacity 
+                  onPress={onToggleLock} 
+                  style={[styles.editBtn, { backgroundColor: item.isLocked ? "rgba(245, 158, 11, 0.15)" : "rgba(58, 117, 242, 0.1)" }]}
+                  activeOpacity={0.7}
+                  disabled={isLocking}
+                >
+                  {isLocking ? (
+                    <ActivityIndicator size="small" color="#F59E0B" />
+                  ) : (
+                    <Ionicons 
+                      name={item.isLocked ? "lock-open-outline" : "lock-closed-outline"} 
+                      size={18} 
+                      color="#F59E0B" 
+                    />
+                  )}
+                </TouchableOpacity>
+              )}
+              
+              {profile?.is_super_admin && (
+                <TouchableOpacity 
+                  onPress={onEdit} 
+                  style={styles.editBtn}
+                  activeOpacity={0.7}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <Ionicons name="settings-outline" size={18} color="#3A75F2" />
+                </TouchableOpacity>
+              )}
+
+              {(profile?.is_super_admin || (item.role !== 'ADMIN' && item.role !== 'LIBRARIAN')) && (
+                <TouchableOpacity 
+                  onPress={onDelete} 
+                  style={styles.deleteBtn}
+                  activeOpacity={0.7}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <Ionicons name="trash-outline" size={18} color="#FF6B6B" />
+                </TouchableOpacity>
+              )}
+            </>
+          )}
+          {(item.isSuperAdmin || (!profile?.is_super_admin && (item.role === 'ADMIN' || item.role === 'LIBRARIAN'))) && (
+            <View style={[styles.editBtn, { backgroundColor: 'transparent' }]}>
+              <Ionicons 
+                name={item.isSuperAdmin ? "shield-checkmark" : "shield-outline"} 
+                size={18} 
+                color={item.isSuperAdmin ? "#A855F7" : "#3A75F2"} 
+              />
+            </View>
+          )}
         </View>
-      </View>
+      </Animated.View>
     );
   };
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#0B0F1A" },
   scroll: { paddingBottom: 20 },
+  title: {
+    fontSize: 28,
+    fontWeight: "bold",
+    color: "#FFFFFF",
+  },
+  subtitle: {
+    fontSize: 14,
+    color: "#8A8F9E",
+    marginTop: 4,
+  },
   header: {
     paddingHorizontal: 20,
     paddingTop: 20,
@@ -863,14 +1099,16 @@ const styles = StyleSheet.create({
   statsRow: {
     flexDirection: "row",
     paddingHorizontal: 20,
-    marginBottom: 32,
-    height: 80,
+    marginBottom: 24,
+    gap: 12,
   },
   statCard: {
-    borderRadius: 14,
-    padding: 12,
+    borderRadius: 20,
+    padding: 16,
     justifyContent: "space-between",
-    height: "100%",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.1)",
+    minHeight: 100,
   },
   statTop: {
     flexDirection: "row",
@@ -878,9 +1116,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   statValue: {
-    fontSize: 18,
-    fontWeight: "bold",
+    fontSize: 22,
+    fontWeight: "800",
     color: "#FFFFFF",
+    letterSpacing: -0.5,
   },
   statLabel: {
     fontSize: 11,
@@ -910,11 +1149,16 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#151929",
-    padding: 14,
-    borderRadius: 14,
-    marginBottom: 10,
-    borderWidth: 0,
-    borderColor: "transparent",
+    padding: 16,
+    borderRadius: 20,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.05)",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 4,
   },
   userAvatar: {
     width: 44,
@@ -924,8 +1168,29 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginRight: 14,
+    position: 'relative',
+  },
+  statusIndicator: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: "#151929",
   },
   userInfo: { flex: 1 },
+  userMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  userEmail: {
+    color: "#5A5F7A",
+    fontSize: 12,
+    flex: 1,
+  },
   userName: {
     color: "#FFFFFF",
     fontSize: 14,
@@ -972,17 +1237,21 @@ const styles = StyleSheet.create({
   reportsGradient: {
     flexDirection: "row",
     alignItems: "center",
-    padding: 16,
-    borderRadius: 16,
+    padding: 20,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.05)",
   },
   reportsIcon: {
     width: 48,
     height: 48,
     borderRadius: 12,
-    backgroundColor: "rgba(58, 117, 242, 0.1)",
+    backgroundColor: "rgba(58, 117, 242, 0.12)",
     alignItems: "center",
     justifyContent: "center",
     marginRight: 16,
+    borderWidth: 1,
+    borderColor: "rgba(58, 117, 242, 0.2)",
   },
   reportsTitle: {
     color: "#FFFFFF",

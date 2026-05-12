@@ -10,64 +10,111 @@ import { Book } from '../features/books/books.types';
 import { BorrowRecord, Annotation } from '../features/members/members.types';
 
 export { useMember, useAdmin, useContent, useSystem, useAnnotations, useSocial, useBookClubs, useClubChat, useInteractions };
+export { useAudiobook, useBook, useBookInventory, useSimilarBooks, useBookReviews } from './library/useContent';
 export type { Book, BorrowRecord, Annotation };
 
-/**
- * BiblioTech Central Gateway Hook
- * Aggregates all domain hooks into a single unified API.
- * Follows the Feature-based Layered Architecture.
- */
-export function useLibrary() {
+import { useLibraryKernel } from '../services/library/useLibraryKernel';
+import { useAudiobookKernel } from '../services/audiobook/useAudiobookKernel';
+
+interface LibraryAPI {
+  // Kernel Props
+  allBooks: any[];
+  isLoading: boolean;
+  stats: any;
+  getCollection: (type: any, limit?: number) => any[];
+  canBorrow: (isbn: string) => any;
+  borrow: any;
+  refresh: () => void;
+
+  // Legacy/Domain Props
+  borrows: any;
+  gamification: any;
+  feed: any;
+  analytics: any;
+  admin: ReturnType<typeof useAdmin>;
+  logistics: ReturnType<typeof useAdmin>['logistics'];
+  books: any;
+  audiobooks: any;
+  recommendations: any;
+  reviews: any;
+  useBooks: any;
+  syncBook: any;
+  config: any;
+  broadcasts: any;
+  readingRoom: any;
+  metadata: any;
+  connectivity: any;
+  bookClubs: any;
+  useMember: typeof useMember;
+  useAdmin: typeof useAdmin;
+  useContent: typeof useContent;
+  useSystem: typeof useSystem;
+  useClubChat: typeof useClubChat;
+  useBookClubs: typeof useBookClubs;
+}
+
+export function useLibrary(): LibraryAPI & { useAudiobookKernel: typeof useAudiobookKernel } {
   const member = useMember();
   const admin = useAdmin();
   const content = useContent();
   const system = useSystem();
   const analytics = useAnalytics();
-  
-  // bookClubs needs to be called as a hook, but we can't do it inside useMemo
   const bookClubs = useBookClubs();
+  const libraryKernel = useLibraryKernel();
+
+  // 1. Stabilize Member Domain
+  const borrows = useMemo(() => ({
+    ...member.borrows,
+    listAll: admin.borrows.listAll,
+    approve: admin.borrows.approve,
+    reject: admin.borrows.reject,
+  }), [member.borrows, admin.borrows]);
+
+  const systemDomain = useMemo(() => ({
+    config: system.config,
+    broadcasts: system.broadcasts,
+    readingRoom: system.readingRoom,
+    metadata: system.metadata,
+    connectivity: system.connectivity,
+  }), [system.config, system.broadcasts, system.readingRoom, system.metadata, system.connectivity]);
 
   return useMemo(() => ({
-    // Member Domain
-    ...member,
-    
-    // Admin Domain (Merging instead of overwriting)
-    admin: { ...admin },
-    
-    // Merge Borrows specifically if they overlap
-    borrows: {
-      ...member.borrows,
-      listAll: admin.borrows.listAll,
-      approve: admin.borrows.approve,
-      reject: admin.borrows.reject,
-    },
-
-    // Community & Social
-    bookClubs,
-
-    // Gamification
+    ...libraryKernel, // Library Kernel Integration
+    useAudiobookKernel, // Audiobook Kernel Integration
+    borrows,
     gamification: member.gamification,
-
-    // Content Domain
-    ...content,
+    feed: member.feed,
+    analytics: { ...analytics, ...member.analytics },
+    admin,
+    logistics: admin.logistics,
+    books: content.books,
+    audiobooks: content.audiobooks,
+    recommendations: content.recommendations,
+    reviews: content.reviews,
     useBooks: content.books.list,
     syncBook: content.books.sync,
-    
-    // System Domain
-    ...system,
-
-    // Analytics Domain
-    analytics: { ...analytics },
-
-    // Logistics Domain
-    logistics: admin.logistics,
-
-    // Legacy Support / Direct access
+    config: systemDomain.config,
+    broadcasts: systemDomain.broadcasts,
+    readingRoom: systemDomain.readingRoom,
+    metadata: systemDomain.metadata,
+    connectivity: systemDomain.connectivity,
+    bookClubs,
     useMember,
     useAdmin,
     useContent,
     useSystem,
     useClubChat,
     useBookClubs
-  }), [member, admin, content, system, analytics, bookClubs]);
+  }), [
+    libraryKernel,
+    borrows, 
+    member.gamification, 
+    member.feed, 
+    analytics,
+    member.analytics,
+    admin, 
+    content, 
+    systemDomain, 
+    bookClubs
+  ]);
 }

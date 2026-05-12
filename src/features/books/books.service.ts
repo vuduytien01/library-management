@@ -29,6 +29,42 @@ export const booksService = {
       .trim();
   },
 
+  /** 
+   * Upgrades low-resolution Google Books thumbnails to higher resolution.
+   * Also ensures HTTPS for all URLs.
+   */
+  upgradeImageUrl(url: string | null | undefined): string | undefined {
+    if (!url) return undefined;
+    let upgraded = url.replace("http://", "https://");
+    
+    // Normalize Google Books URLs
+    if (upgraded.includes("books.google.com/books/content") || upgraded.includes("google.com/books/content")) {
+      // Force zoom=0 for maximum resolution
+      if (upgraded.includes("zoom=")) {
+        upgraded = upgraded.replace(/zoom=[1-9]/, "zoom=0");
+      } else if (!upgraded.includes("zoom=0")) {
+        upgraded += (upgraded.includes("?") ? "&" : "?") + "zoom=0";
+      }
+      
+      // Remove restricting params
+      upgraded = upgraded
+        .replace(/&edge=curl/, "")
+        .replace(/&printsec=frontcover/, "")
+        .replace(/&imgtk=[A-Za-z0-9_-]+/, "");
+      
+      // Ensure we request a large width if fife is not used
+      if (!upgraded.includes("fife") && !upgraded.includes("&w=")) {
+        upgraded += "&w=1200";
+      }
+    } 
+    // Normalize OpenLibrary URLs
+    else if (upgraded.includes("covers.openlibrary.org")) {
+      upgraded = upgraded.replace("-S.jpg", "-L.jpg").replace("-M.jpg", "-L.jpg");
+    }
+    
+    return upgraded;
+  },
+
   // --- Physical Books Metadata ---
 
   async fetchBookMetadata(isbn: string): Promise<BookMetadata | null> {
@@ -84,12 +120,13 @@ export const booksService = {
         googleItem?.categories ||
         openLibData?.subjects?.map((s: any) => s.name) ||
         [],
-      thumbnail:
+      thumbnail: this.upgradeImageUrl(
         openLibData?.cover?.large ||
         openLibData?.cover?.medium ||
         googleItem?.imageLinks?.thumbnail ||
         googleItem?.imageLinks?.smallThumbnail ||
-        `https://covers.openlibrary.org/b/isbn/${cleanIsbn}-L.jpg`,
+        `https://covers.openlibrary.org/b/isbn/${cleanIsbn}-L.jpg`
+      ),
       isbn: cleanIsbn,
       language: googleItem?.language || "vi",
       averageRating: googleItem?.averageRating,
@@ -112,18 +149,28 @@ export const booksService = {
 
   /**
    * Fetches metadata by title and author when ISBN is not available.
-   * Prioritizes Open Library for cover images.
+   * Calls the search-book-metadata Supabase Edge Function to securely use the API key.
    */
+  cleanTitle(title: string): string {
+    return title
+      .replace(/\(Audio.*?\)/gi, "")
+      .replace(/\(Tiếng.*?\)/gi, "")
+      .replace(/\(Full.*?\)/gi, "")
+      .replace(/\[.*?\]/g, "")
+      .replace(/-.*?$/, "") 
+      .trim();
+  },
+
   async fetchMetadataBySearch(
     title: string,
     author: string,
     titleEn?: string,
   ): Promise<Partial<BookMetadata> | null> {
-    const cleanTitle = titleEn || this.normalizeTitle(title);
+    const cleanT = this.cleanTitle(title);
+    const cleanTitle = titleEn || this.normalizeTitle(cleanT);
     const cleanAuthor = author ? this.normalizeTitle(author) : "";
 
     let openLibCover = null;
-    let googleMetadata: any = null;
 
     // 1. Try Open Library Search for Cover (Use English title if available)
     try {
@@ -153,28 +200,66 @@ export const booksService = {
       console.warn("OpenLib search failed:", e);
     }
 
-    // 2. Try Google Books for backup and metadata
+    // 2. Try Edge Function for Google Books metadata (uses Supabase secret GOOGLE_BOOKS_API_KEY)
+    let googleMetadata: any = null;
     try {
-      const query = titleEn ? `intitle:${titleEn} OR intitle:${title}` : `intitle:${title}`;
-      const gRes = await axios.get(
-        `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}+inauthor:${encodeURIComponent(cleanAuthor)}&maxResults=1`,
-        { timeout: 5000 },
-      );
-      googleMetadata = gRes.data.items?.[0]?.volumeInfo;
+      const queryTitle = titleEn || cleanT;
+      const { data, error } = await supabase.functions.invoke('search-book-metadata', {
+        body: { title: queryTitle, author: cleanAuthor }
+      });
+
+      if (!error && data?.success) {
+        googleMetadata = data.data;
+      } else {
+        // Fallback to client-side Google Books API if edge function fails or is not deployed
+        const query = titleEn ? `intitle:${titleEn} OR intitle:${cleanT}` : `intitle:${cleanT}`;
+        const gRes = await axios.get(
+          `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}+inauthor:${encodeURIComponent(cleanAuthor)}&maxResults=1`,
+          { timeout: 5000 },
+        );
+        const item = gRes.data.items?.[0]?.volumeInfo;
+        if (item) {
+          googleMetadata = {
+            title: item.title,
+            author: item.authors?.join(", "),
+            description: item.description,
+            thumbnail: item.imageLinks?.thumbnail || item.imageLinks?.smallThumbnail,
+            categories: item.categories || []
+          };
+        }
+      }
     } catch (e) {
-      console.warn("Google Books search failed:", e);
+      console.warn("Metadata search failed, trying direct fallback:", e);
+      try {
+        const query = titleEn ? `intitle:${titleEn} OR intitle:${cleanT}` : `intitle:${cleanT}`;
+        const gRes = await axios.get(
+          `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}+inauthor:${encodeURIComponent(cleanAuthor)}&maxResults=1`,
+          { timeout: 5000 },
+        );
+        const item = gRes.data.items?.[0]?.volumeInfo;
+        if (item) {
+          googleMetadata = {
+            title: item.title,
+            author: item.authors?.join(", "),
+            description: item.description,
+            thumbnail: item.imageLinks?.thumbnail || item.imageLinks?.smallThumbnail,
+            categories: item.categories || []
+          };
+        }
+      } catch (innerE) {
+        console.warn("Direct fallback also failed:", innerE);
+      }
     }
 
     if (!openLibCover && !googleMetadata) return null;
 
     return {
       title: googleMetadata?.title || title,
-      author: googleMetadata?.authors?.join(", ") || author,
+      author: googleMetadata?.author || author,
       description: googleMetadata?.description,
-      thumbnail:
-        openLibCover ||
-        googleMetadata?.imageLinks?.thumbnail ||
-        googleMetadata?.imageLinks?.smallThumbnail,
+      thumbnail: this.upgradeImageUrl(
+        openLibCover || googleMetadata?.thumbnail
+      ),
       categories: googleMetadata?.categories || [],
     };
   },
@@ -189,7 +274,30 @@ export const booksService = {
       .limit(limit);
 
     if (error || !data) return [];
-    return this.enrichWithBookMetadata(data, true); // true = fast mode
+    return this.enrichWithBookMetadata(data, false); // Change to false to ensure images are fetched if missing
+  },
+
+  /**
+   * Helper function to calculate total duration from chapters
+   */
+  calculateTotalDuration(chapters: any[] | undefined | null): number {
+    if (!chapters || !Array.isArray(chapters) || chapters.length === 0) return 0;
+    return chapters.reduce((sum, ch) => {
+      // Ensure we're adding numbers, fallback to 0
+      const duration = typeof ch.duration_seconds === 'number' ? ch.duration_seconds : parseInt(String(ch.duration_seconds || 0), 10);
+      return sum + (isNaN(duration) ? 0 : duration);
+    }, 0);
+  },
+
+  /**
+   * Main entry point for accurate duration calculation
+   */
+  calculateAudiobookDuration(ab: AudiobookRecord): number {
+    const sumDuration = this.calculateTotalDuration(ab.chapters);
+    // If chapters have durations, they are the source of truth
+    if (sumDuration > 0) return sumDuration;
+    // Otherwise fallback to the main duration_seconds field
+    return ab.duration_seconds || 0;
   },
 
   async enrichWithBookMetadata(
@@ -204,6 +312,14 @@ export const booksService = {
       let canonical_author = ab.author;
       let canonical_description = ab.description;
       let canonical_cover_url = ab.cover_url;
+      let foundNewMetadata = false;
+
+      // Always calculate accurate duration from chapters if available
+      const calculatedDuration = this.calculateAudiobookDuration(ab);
+      
+      if (calculatedDuration > 0 && calculatedDuration !== ab.duration_seconds) {
+        foundNewMetadata = true;
+      }
 
       // Skip heavy lookups in fast mode if we already have the basics
       if (fast && (ab.author && ab.cover_url && ab.cover_url.startsWith('http'))) {
@@ -212,8 +328,19 @@ export const booksService = {
           canonical_author: ab.author,
           canonical_description: ab.description,
           canonical_cover_url: ab.cover_url,
-          duration: this.formatDuration(ab.duration_seconds),
+          duration: this.formatDuration(calculatedDuration),
+          duration_seconds: calculatedDuration
         });
+        
+        // Persist corrected duration in background even in fast mode
+        if (foundNewMetadata) {
+          supabase.from('audiobook_metadata')
+            .update({ duration_seconds: calculatedDuration })
+            .eq('id', ab.id)
+            .then(({ error }) => {
+              if (error) console.warn("Failed to persist fast duration update:", error);
+            });
+        }
         continue;
       }
 
@@ -254,13 +381,27 @@ export const booksService = {
           ab.author_vi = translations.author_vi;
           ab.narrator_en = translations.narrator_en;
           ab.narrator_vi = translations.narrator_vi;
+          foundNewMetadata = true;
         } catch (e) {
           console.warn(`AI translation failed for ${ab.title}:`, e);
         }
       }
 
-      // 3. Try external search if still missing cover or explicitly requested
-      if (!fast && (!canonical_cover_url || !canonical_cover_url.startsWith('http'))) {
+      // 3. Try external search if still missing cover or if it looks low-res
+      // We consider anything with zoom=1,2,3,4,5 as potentially low-res for HD display
+      const isGoogleLowRes = canonical_cover_url?.includes('google.com') && 
+                            (canonical_cover_url.includes('zoom=1') || 
+                             canonical_cover_url.includes('zoom=2') ||
+                             canonical_cover_url.includes('zoom=5'));
+      
+      const isBadSource = canonical_cover_url?.includes('thuviensachnoi.vn') || 
+                          canonical_cover_url?.includes('vcdn.com');
+                             
+      const isMissingOrLowRes = !canonical_cover_url || 
+                               !canonical_cover_url.startsWith('http') || 
+                               isGoogleLowRes || isBadSource;
+
+      if (!fast && isMissingOrLowRes) {
         try {
           const external = await this.fetchMetadataBySearch(
             ab.title,
@@ -269,22 +410,47 @@ export const booksService = {
           );
           if (external) {
             canonical_author = external.author || canonical_author || null;
-            canonical_description =
-              canonical_description || external.description || null;
-            canonical_cover_url =
-              canonical_cover_url || external.thumbnail || null;
+            canonical_description = external.description || canonical_description || null;
+            canonical_cover_url = external.thumbnail || canonical_cover_url;
+            foundNewMetadata = true;
           }
         } catch (e) {
           console.warn(`External enrichment failed for ${ab.title}:`, e);
         }
+      }
+      
+      const final_cover_url = this.upgradeImageUrl(canonical_cover_url || ab.cover_url) || null;
+
+      // 5. Update database if we found better metadata, a new cover, or if calculated duration differs
+      const durationChanged = calculatedDuration > 0 && calculatedDuration !== ab.duration_seconds;
+      
+      if (foundNewMetadata || (final_cover_url && final_cover_url !== ab.cover_url) || durationChanged) {
+        // Run update in background
+        supabase.from('audiobook_metadata')
+          .update({
+            author: canonical_author,
+            description: canonical_description,
+            cover_url: final_cover_url,
+            duration_seconds: calculatedDuration,
+            title_en: ab.title_en,
+            title_vi: ab.title_vi,
+            description_en: ab.description_en,
+            description_vi: ab.description_vi,
+            scraped_at: new Date().toISOString()
+          })
+          .eq('id', ab.id)
+          .then(({ error }) => {
+            if (error) console.warn("Failed to persist metadata update:", error);
+          });
       }
 
       enriched.push({
         ...ab,
         canonical_author,
         canonical_description,
-        canonical_cover_url: canonical_cover_url || ab.cover_url, // Fallback to original
-        duration: this.formatDuration(ab.duration_seconds),
+        canonical_cover_url: final_cover_url,
+        duration: this.formatDuration(calculatedDuration),
+        duration_seconds: calculatedDuration
       });
     }
 
@@ -314,11 +480,21 @@ export const booksService = {
     return enriched[0];
   },
 
-  formatDuration(seconds: number | null): string {
-    if (!seconds) return "";
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    return h > 0 ? `${h} giờ ${m} phút` : `${m} phút`;
+  formatDuration(seconds: number): string {
+    if (!seconds || seconds <= 0) return '0 phút';
+    
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = Math.floor(seconds % 60);
+    
+    let parts = [];
+    if (hours > 0) parts.push(`${hours} giờ`);
+    if (minutes > 0) parts.push(`${minutes} phút`);
+    if (secs > 0 && hours === 0) parts.push(`${secs} giây`); // Only show seconds if less than an hour
+    
+    if (parts.length === 0) return '0 phút';
+    
+    return parts.join(' ');
   },
 
   getPlaybackUrl(record: AudiobookRecord): string {
@@ -496,6 +672,36 @@ export const booksService = {
     }
   },
 
+  async getSimilarBooks(isbn: string, limit = 5): Promise<Book[]> {
+    try {
+      const { data: currentBook } = await supabase
+        .from("books")
+        .select("embedding")
+        .eq("isbn", isbn)
+        .single();
+      
+      if (!currentBook?.embedding) return [];
+
+      const { data: recommendations, error: matchError } = await supabase.rpc(
+        "match_books",
+        {
+          query_embedding: currentBook.embedding,
+          match_threshold: 0.4,
+          match_count: limit + 1,
+        },
+      );
+
+      if (matchError) throw matchError;
+
+      return (recommendations || [])
+        .filter((b: any) => b.isbn !== isbn)
+        .slice(0, limit);
+    } catch (error) {
+      console.error("[booksService] Similar books error:", error);
+      return [];
+    }
+  },
+
   async getAudiobookBySourceId(
     platform: string,
     sourceId: string,
@@ -586,6 +792,7 @@ export const booksService = {
             author_vi: item.author_vi,
             narrator_en: item.narrator_en,
             narrator_vi: item.narrator_vi,
+            duration_seconds: item.duration_seconds,
             tags: {
               ...(item.tags || {}),
               is_enriched: true,

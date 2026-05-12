@@ -158,7 +158,12 @@ export default function LogisticsPage() {
       
       <TouchableOpacity 
         style={styles.executeBtn}
-        onPress={() => executeMutation.mutate(item)}
+        onPress={() => executeMutation.mutate({
+          isbn: item.book_isbn,
+          fromBranchId: item.from_branch_id,
+          toBranchId: item.to_branch_id,
+          quantity: item.quantity
+        })}
         disabled={executeMutation.isPending}
       >
         {executeMutation.isPending ? (

@@ -7,11 +7,11 @@ import { notificationService } from '../../src/core/notifications';
 import { useAuthStore } from '../../src/store/useAuthStore';
 import { useTranslation } from 'react-i18next';
 import { format } from 'date-fns';
-import { vi } from 'date-fns/locale';
+import { vi, enUS } from 'date-fns/locale';
 
 export default function NotificationsScreen() {
   const router = useRouter();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const profile = useAuthStore((state) => state.profile);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -85,7 +85,7 @@ export default function NotificationsScreen() {
         </View>
         <Text style={styles.cardBody} numberOfLines={2}>{item.body}</Text>
         <Text style={styles.timeText}>
-          {format(new Date(item.created_at), 'HH:mm, dd MMMM yyyy', { locale: vi })}
+          {format(new Date(item.created_at), 'HH:mm, dd MMMM yyyy', { locale: i18n.language === 'vi' ? vi : enUS })}
         </Text>
       </View>
     </TouchableOpacity>
@@ -124,8 +124,8 @@ export default function NotificationsScreen() {
               <View style={styles.emptyIconCircle}>
                 <Ionicons name="notifications-off-outline" size={64} color="#1E2540" />
               </View>
-              <Text style={styles.emptyTitle}>{t('messages.no_notifications')}</Text>
-              <Text style={styles.emptyDesc}>{t('messages.no_notifications_desc')}</Text>
+              <Text style={styles.emptyTitle}>{t('member.notifications.empty')}</Text>
+              <Text style={styles.emptyDesc}>{t('messages.no_notifications_desc', 'Stay tuned for updates!')}</Text>
             </View>
           }
         />

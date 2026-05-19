@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
-import { supabase } from '../../api/supabase';
-import { useAuthStore } from '../../store/useAuthStore';
+import { useState, useEffect } from "react";
+import { supabase } from "../../api/supabase";
+import { useAuthStore } from "../../store/useAuthStore";
 
 export function useReadingRoom(isbn: string) {
-  const profile = useAuthStore(state => state.profile);
+  const profile = useAuthStore((state) => state.profile);
   const [readers, setReaders] = useState<any[]>([]);
   const [reactions, setReactions] = useState<any[]>([]);
   const [liveCount, setLiveCount] = useState(0);
@@ -21,21 +21,21 @@ export function useReadingRoom(isbn: string) {
     });
 
     channel
-      .on('presence', { event: 'sync' }, () => {
+      .on("presence", { event: "sync" }, () => {
         const state = channel.presenceState();
         const users = Object.values(state).flat();
         setReaders(users);
         setLiveCount(users.length);
         setIsLoading(false);
       })
-      .on('broadcast', { event: 'reaction' }, ({ payload }) => {
+      .on("broadcast", { event: "reaction" }, ({ payload }) => {
         setReactions((prev) => [...prev, payload]);
         setTimeout(() => {
           setReactions((prev) => prev.filter((r) => r.id !== payload.id));
         }, 3000);
       })
       .subscribe(async (status) => {
-        if (status === 'SUBSCRIBED') {
+        if (status === "SUBSCRIBED") {
           await channel.track({
             id: profile.id,
             fullName: profile.fullName,
@@ -58,8 +58,8 @@ export function useReadingRoom(isbn: string) {
       user_name: profile?.fullName,
     };
     supabase.channel(`reading_room:${isbn}`).send({
-      type: 'broadcast',
-      event: 'reaction',
+      type: "broadcast",
+      event: "reaction",
       payload: reaction,
     });
   };

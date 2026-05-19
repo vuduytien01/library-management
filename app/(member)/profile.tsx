@@ -33,6 +33,7 @@ import { useLibrary } from "../../src/hooks/useLibrary";
 import { useAuthStore } from "../../src/store/useAuthStore";
 import { useUndoStore } from "../../src/store/useUndoStore";
 import { useTabBarStore } from "../../src/store/useTabBarStore";
+import { InlineUndoButton } from "../../src/components/InlineUndoButton";
 
 const { width } = Dimensions.get("window");
 
@@ -50,35 +51,31 @@ export default function ProfileScreen() {
   const { data: myBadges } = gamification.getMyBadges();
 
   const getLocalizedBadgeName = (badgeName: string) => {
-    if (i18n.language === "en") {
-      const badgeNamesMap: { [key: string]: string } = {
-        "Thính giả mới": "New Listener",
-        "Tập sự Đọc sách": "Novice Reader",
-        "Nhà phê bình": "Critic",
-        "Chiến thần Trả sách": "Return Champion",
-        "Chuyên gia Sách nói": "Audiobook Expert",
-        "Mọt sách Chính hiệu": "True Bookworm",
-        "Độc giả Trung thành": "Loyal Reader",
-      };
-      return badgeNamesMap[badgeName] || badgeName;
-    }
-    return badgeName;
+    const keyMap: { [key: string]: string } = {
+      "Thính giả mới": "badge_new_listener",
+      "Tập sự Đọc sách": "badge_novice_reader",
+      "Nhà phê bình": "badge_critic",
+      "Chiến thần Trả sách": "badge_return_champion",
+      "Chuyên gia Sách nói": "badge_audiobook_expert",
+      "Mọt sách Chính hiệu": "badge_true_bookworm",
+      "Độc giả Trung thành": "badge_loyal_reader",
+    };
+    const key = keyMap[badgeName];
+    return key ? t(`profile.${key}`) : badgeName;
   };
 
   const getLocalizedBadgeDesc = (badgeDesc: string) => {
-    if (i18n.language === "en") {
-      const badgeDescMap: { [key: string]: string } = {
-        "Bắt đầu nghe cuốn sách nói đầu tiên": "Start listening to your first audiobook",
-        "Bắt đầu hành trình với cuốn sách đầu": "Start your journey with your first book",
-        "Để lại 5 đánh giá cho các đầu sách": "Leave 5 reviews for book titles",
-        "Trả sách đúng hạn 5 lần liên tiếp": "Return books on time 5 consecutive times",
-        "Hoàn thành việc nghe 5 cuốn sách nói": "Complete listening to 5 audiobooks",
-        "Mượn trên 10 cuốn sách": "Borrow more than 10 books",
-        "Mượn trên 50 cuốn sách": "Borrow more than 50 books",
-      };
-      for (const [key, val] of Object.entries(badgeDescMap)) {
-        if (badgeDesc.includes(key)) return val;
-      }
+    const keyMap: { [key: string]: string } = {
+      "Bắt đầu nghe cuốn sách nói đầu tiên": "badge_desc_new_listener",
+      "Bắt đầu hành trình với cuốn sách đầu": "badge_desc_novice_reader",
+      "Để lại 5 đánh giá cho các đầu sách": "badge_desc_critic",
+      "Trả sách đúng hạn 5 lần liên tiếp": "badge_desc_return_champion",
+      "Hoàn thành việc nghe 5 cuốn sách nói": "badge_desc_audiobook_expert",
+      "Mượn trên 10 cuốn sách": "badge_desc_true_bookworm",
+      "Mượn trên 50 cuốn sách": "badge_desc_loyal_reader",
+    };
+    for (const [key, val] of Object.entries(keyMap)) {
+      if (badgeDesc.includes(key)) return t(`profile.${val}`);
     }
     return badgeDesc;
   };
@@ -101,7 +98,8 @@ export default function ProfileScreen() {
               return;
             }
             const script = document.createElement("script");
-            script.src = "https://html2canvas.hertzen.com/dist/html2canvas.min.js";
+            script.src =
+              "https://html2canvas.hertzen.com/dist/html2canvas.min.js";
             script.onload = () => resolve((window as any).html2canvas);
             script.onerror = reject;
             document.head.appendChild(script);
@@ -111,13 +109,19 @@ export default function ProfileScreen() {
         const html2canvas = await loadHtml2Canvas();
         const element = document.getElementById("membership-card-web");
         if (element) {
-          const canvas = await html2canvas(element, { useCORS: true, backgroundColor: "#0B0F1A" });
+          const canvas = await html2canvas(element, {
+            useCORS: true,
+            backgroundColor: "#0B0F1A",
+          });
           const dataUrl = canvas.toDataURL("image/png");
           const link = document.createElement("a");
           link.href = dataUrl;
-          link.download = `The_Thanh_Vien_BiblioTech_${profile?.fullName || "User"}.png`;
+          link.download = t("profile.download_filename", { name: profile?.fullName || "User" });
           link.click();
-          Alert.alert(t("common.success", "Thành công"), t("profile.download_success", "Đã tải xuống ảnh thẻ thành viên thành công!"));
+          Alert.alert(
+            t("common.success"),
+            t("profile.download_success"),
+          );
           return;
         }
       }
@@ -134,10 +138,7 @@ export default function ProfileScreen() {
 
       await Sharing.shareAsync(uri, {
         mimeType: "image/png",
-        dialogTitle: t(
-          "profile.share_title_card",
-          "Chia sẻ thẻ thành viên BiblioTech",
-        ),
+        dialogTitle: t("profile.share_title_card"),
         UTI: "public.png",
       });
     } catch (error) {
@@ -186,10 +187,7 @@ export default function ProfileScreen() {
 
       await Share.share({
         message: text,
-        title: t(
-          "profile.share_title_card",
-          "Chia sẻ thẻ thành viên BiblioTech",
-        ),
+        title: t("profile.share_title_card"),
       });
     } catch (error) {
       console.error("Share Link error:", error);
@@ -396,7 +394,10 @@ export default function ProfileScreen() {
     if (!permissionResult.granted) {
       Alert.alert(
         t("profile.camera_permission_title", "Quyền truy cập"),
-        t("profile.camera_permission_desc", "Vui lòng cấp quyền truy cập máy ảnh để chụp ảnh mới"),
+        t(
+          "profile.camera_permission_desc",
+          "Vui lòng cấp quyền truy cập máy ảnh để chụp ảnh mới",
+        ),
       );
       return;
     }
@@ -505,9 +506,9 @@ export default function ProfileScreen() {
 
   const clearAllGenres = async () => {
     const previousGenres = [...selectedGenres];
-    
+
     useUndoStore.getState().queueAction({
-      message: t('admin.clear_genres_pending'),
+      message: t("admin.clear_genres_pending"),
       onCommit: async () => {
         try {
           const { error } = await supabase
@@ -526,7 +527,7 @@ export default function ProfileScreen() {
       onUndo: () => {
         setSelectedGenres(previousGenres);
         updateProfile({ favoriteGenres: previousGenres });
-      }
+      },
     });
 
     // Optimistic Update
@@ -557,12 +558,21 @@ export default function ProfileScreen() {
   const getGenreStats = () => {
     const genreCounts: Record<string, number> = {};
     myBorrows?.forEach((b: any) => {
-      const book = allBooks?.find((bk: any) => (bk.id || bk.isbn) === b.book_id);
+      const book = allBooks?.find(
+        (bk: any) => (bk.id || bk.isbn) === b.book_id,
+      );
       const genre = book?.category || t("common.other");
       genreCounts[genre] = (genreCounts[genre] || 0) + 1;
     });
 
-    const colors = ["#3A75F2", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#EC4899"];
+    const colors = [
+      "#3A75F2",
+      "#10B981",
+      "#F59E0B",
+      "#EF4444",
+      "#8B5CF6",
+      "#EC4899",
+    ];
     return Object.entries(genreCounts).map(([name, population], i) => ({
       name,
       population,
@@ -673,7 +683,7 @@ export default function ProfileScreen() {
             </Text>
           ) : (
             <Text style={[styles.userBio, { opacity: 0.5 }]}>
-              {t("profile.no_bio", "Chưa có tiểu sử...")}
+              {t("profile.no_bio")}
             </Text>
           )}
 
@@ -681,10 +691,17 @@ export default function ProfileScreen() {
           <View
             style={styles.levelContainer}
             accessible={true}
-            accessibilityLabel={t("profile.level_xp_info", "Cấp độ {{level}}, kinh nghiệm {{xp}} điểm", { level: profile?.level || 1, xp: profile?.xp || 0 })}
+            accessibilityLabel={t(
+              "profile.level_xp_info",
+              "Cấp độ {{level}}, kinh nghiệm {{xp}} điểm",
+              { level: profile?.level || 1, xp: profile?.xp || 0 },
+            )}
           >
             <View style={styles.levelBadge}>
-              <Text style={styles.levelText}>{t("profile.level_short", "CẤP").toUpperCase()} {profile?.level || 1}</Text>
+              <Text style={styles.levelText}>
+                {t("profile.level_short").toUpperCase()}{" "}
+                {profile?.level || 1}
+              </Text>
             </View>
             <View style={styles.xpBarContainer}>
               <View style={styles.xpBarBg}>
@@ -701,12 +718,15 @@ export default function ProfileScreen() {
               style={styles.shareProfileBtn}
               onPress={() => {
                 Share.share({
-                  message: t("profile.share_message", "Tôi vừa đạt Cấp {{level}} với {{xp}} XP tại BiblioTech! Độc giả số 1 là đây chứ đâu! 📚✨", { level: profile?.level || 1, xp: profile?.xp || 0 }),
-                  title: t("profile.share_title", "Thành tích BiblioTech"),
+                  message: t("profile.share_message", { level: profile?.level || 1, xp: profile?.xp || 0 }),
+                  title: t("profile.share_title"),
                 });
               }}
               accessibilityRole="button"
-              accessibilityLabel={t("profile.share_achievement", "Chia sẻ thành tích")}
+              accessibilityLabel={t(
+                "profile.share_achievement",
+                "Chia sẻ thành tích",
+              )}
             >
               <Ionicons name="share-outline" size={18} color="#FFFFFF" />
             </TouchableOpacity>
@@ -803,7 +823,9 @@ export default function ProfileScreen() {
                   style={[
                     styles.genreChip,
                     {
-                      backgroundColor: isSelected ? "rgba(16, 185, 129, 0.15)" : "#171B2B",
+                      backgroundColor: isSelected
+                        ? "rgba(16, 185, 129, 0.15)"
+                        : "#171B2B",
                       borderColor: isSelected ? "#10B981" : "#1F263B",
                       borderWidth: isSelected ? 1.5 : 1,
                       shadowColor: isSelected ? "#10B981" : "transparent",
@@ -835,15 +857,15 @@ export default function ProfileScreen() {
           <Text style={styles.sectionTitle}>{t("member.digital_pass")}</Text>
 
           <ViewShot ref={viewShotRef} options={{ format: "png", quality: 0.8 }}>
-            <View 
-              id="membership-card-web" 
-              nativeID="membership-card-web" 
-              style={{ 
-                alignSelf: "center", 
-                width: Math.min(width * 0.85, 420), 
+            <View
+              id="membership-card-web"
+              nativeID="membership-card-web"
+              style={{
+                alignSelf: "center",
+                width: Math.min(width * 0.85, 420),
                 height: Math.min(width * 0.85, 420) * 0.62,
-                borderRadius: 20, 
-                overflow: "hidden" 
+                borderRadius: 20,
+                overflow: "hidden",
               }}
             >
               <DigitalMembershipPass
@@ -1045,10 +1067,14 @@ export default function ProfileScreen() {
 
         {/* Reading Analytics Charts */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{t("profile.reading_journey", "Hành trình đọc sách")}</Text>
-          
+          <Text style={styles.sectionTitle}>
+            {t("profile.reading_journey", "Hành trình đọc sách")}
+          </Text>
+
           <View style={styles.chartContainer}>
-            <Text style={styles.chartTitle}>{t("profile.monthly_activity", "Hoạt động hàng tháng")}</Text>
+            <Text style={styles.chartTitle}>
+              {t("profile.monthly_activity", "Hoạt động hàng tháng")}
+            </Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
               <View style={{ paddingRight: 20 }}>
                 <LineChart
@@ -1064,7 +1090,9 @@ export default function ProfileScreen() {
           </View>
 
           <View style={[styles.chartContainer, { marginTop: 20 }]}>
-            <Text style={styles.chartTitle}>{t("profile.genre_distribution", "Phân bổ thể loại")}</Text>
+            <Text style={styles.chartTitle}>
+              {t("profile.genre_distribution", "Phân bổ thể loại")}
+            </Text>
             <PieChart
               data={pieData}
               width={width - 48}
@@ -1156,7 +1184,9 @@ export default function ProfileScreen() {
                         size={14}
                         color="#10B981"
                       />
-                      <Text style={styles.earnedText}>{t("profile.earned", "Đã đạt")}</Text>
+                      <Text style={styles.earnedText}>
+                        {t("profile.earned", "Đã đạt")}
+                      </Text>
                     </View>
                   )}
                 </TouchableOpacity>
@@ -1177,9 +1207,14 @@ export default function ProfileScreen() {
             style={styles.analyticsGradient}
           >
             <View style={styles.analyticsInfo}>
-              <Text style={styles.analyticsTitle}>{t("profile.analytics_title", "Phân tích đọc sách")}</Text>
+              <Text style={styles.analyticsTitle}>
+                {t("profile.analytics_title", "Phân tích đọc sách")}
+              </Text>
               <Text style={styles.analyticsDesc}>
-                {t("profile.analytics_desc", "Xem xu hướng mượn sách, biểu đồ thể loại và nhật ký hoạt động của bạn")}
+                {t(
+                  "profile.analytics_desc",
+                  "Xem xu hướng mượn sách, biểu đồ thể loại và nhật ký hoạt động của bạn",
+                )}
               </Text>
             </View>
             <View style={styles.analyticsIconBox}>
@@ -1215,6 +1250,45 @@ export default function ProfileScreen() {
             </View>
             <Text style={styles.actionLabel}>
               {t("profile.borrow_history")}
+            </Text>
+            <Ionicons name="chevron-forward" size={18} color="#5A5F7A" />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.actionItem}
+            onPress={() => router.push("/(member)/community")}
+          >
+            <View
+              style={[
+                styles.actionIcon,
+                { backgroundColor: "rgba(139, 92, 246, 0.1)" },
+              ]}
+            >
+              <Ionicons name="people-outline" size={20} color="#8B5CF6" />
+            </View>
+            <Text style={styles.actionLabel}>
+              {t("tabs.community")}
+            </Text>
+            <Ionicons name="chevron-forward" size={18} color="#5A5F7A" />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.actionItem}
+            onPress={() => {
+              setSelectedBadge(null);
+              setIsRoadmapVisible(true);
+            }}
+          >
+            <View
+              style={[
+                styles.actionIcon,
+                { backgroundColor: "rgba(245, 158, 11, 0.1)" },
+              ]}
+            >
+              <Ionicons name="trophy-outline" size={20} color="#F59E0B" />
+            </View>
+            <Text style={styles.actionLabel}>
+              {t("profile.badges")}
             </Text>
             <Ionicons name="chevron-forward" size={18} color="#5A5F7A" />
           </TouchableOpacity>
@@ -1283,13 +1357,13 @@ export default function ProfileScreen() {
                   onPress={() => {
                     const previousGenres = [...editGenres];
                     useUndoStore.getState().queueAction({
-                      message: t('admin.clear_genres_pending'),
+                      message: t("admin.clear_genres_pending"),
                       onCommit: async () => {
                         // Commit: No specific commit needed as state is saved on handleSaveProfile
                       },
                       onUndo: () => {
                         setEditGenres(previousGenres);
-                      }
+                      },
                     });
                     setEditGenres([]);
                   }}
@@ -1592,10 +1666,14 @@ export default function ProfileScreen() {
                     ]}
                     onPress={() => {
                       Share.share({
-                        message: i18n.language === "en"
-                          ? `I just earned the "${getLocalizedBadgeName(selectedBadge.name)}" badge at BiblioTech! 🏆\n"${getLocalizedBadgeDesc(selectedBadge.description)}"`
-                          : `Tôi vừa đạt được huy hiệu "${selectedBadge.name}" tại BiblioTech! 🏆\n"${selectedBadge.description}"`,
-                        title: i18n.language === "en" ? "BiblioTech Badge" : "Huy hiệu BiblioTech",
+                        message:
+                          i18n.language === "en"
+                            ? `I just earned the "${getLocalizedBadgeName(selectedBadge.name)}" badge at BiblioTech! 🏆\n"${getLocalizedBadgeDesc(selectedBadge.description)}"`
+                            : `Tôi vừa đạt được huy hiệu "${selectedBadge.name}" tại BiblioTech! 🏆\n"${selectedBadge.description}"`,
+                        title:
+                          i18n.language === "en"
+                            ? "BiblioTech Badge"
+                            : "Huy hiệu BiblioTech",
                       });
                     }}
                   >
@@ -1667,7 +1745,9 @@ export default function ProfileScreen() {
               >
                 <Ionicons name="eye-outline" size={20} color="#3A75F2" />
               </View>
-              <Text style={styles.actionSheetItemText}>{t("profile.view_avatar", "Xem ảnh đại diện")}</Text>
+              <Text style={styles.actionSheetItemText}>
+                {t("profile.view_avatar", "Xem ảnh đại diện")}
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity

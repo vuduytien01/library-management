@@ -1,14 +1,14 @@
-export type AuditAction = 
-  | 'BOOK_ADD' 
-  | 'BOOK_EDIT' 
-  | 'BOOK_DELETE' 
-  | 'BORROW_APPROVE' 
-  | 'BORROW_REJECT' 
-  | 'MEMBER_APPOINT' 
-  | 'FINE_COLLECT' 
-  | 'SECURITY_LOGIN_FAILURE';
+export type AuditAction =
+  | "BOOK_ADD"
+  | "BOOK_EDIT"
+  | "BOOK_DELETE"
+  | "BORROW_APPROVE"
+  | "BORROW_REJECT"
+  | "MEMBER_APPOINT"
+  | "FINE_COLLECT"
+  | "SECURITY_LOGIN_FAILURE";
 
-export type AuditSeverity = 'INFO' | 'WARNING' | 'CRITICAL';
+export type AuditSeverity = "INFO" | "WARNING" | "CRITICAL";
 
 export interface SecurityAuditResult {
   rls_missing: string[];
@@ -18,13 +18,13 @@ export interface SecurityAuditResult {
     cmd: string;
   }>;
   sensitive_public_read: string[];
-  status: 'SECURE' | 'RISK';
+  status: "SECURE" | "RISK";
   timestamp: string;
 }
 
 export interface SecurityAlert {
   id: string;
-  severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  severity: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
   title: string;
   description: string;
   timestamp: string;
@@ -40,9 +40,9 @@ export interface LibraryReport {
 
 export interface LogisticsTask {
   id: string;
-  type: 'TRANSFER' | 'RESTOCK';
-  status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED';
-  priority: 'LOW' | 'MEDIUM' | 'HIGH';
+  type: "TRANSFER" | "RESTOCK";
+  status: "PENDING" | "IN_PROGRESS" | "COMPLETED";
+  priority: "LOW" | "MEDIUM" | "HIGH";
   metadata: any;
 }
 
@@ -68,7 +68,7 @@ export interface BranchStock {
   };
 }
 
-export type UserRole = 'MEMBER' | 'LIBRARIAN' | 'ADMIN';
+export type UserRole = "MEMBER" | "LIBRARIAN" | "ADMIN";
 
 export interface AdminUser {
   id: string;

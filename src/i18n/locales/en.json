@@ -1,6 +1,8 @@
 {
   "common": {
     "search": "Search",
+    "all": "All",
+    "subjects": "Featured Genres",
     "search_placeholder": "Search books, authors, genres...",
     "save": "Save",
     "cancel": "Cancel",
@@ -12,6 +14,7 @@
     "back": "Back",
     "error": "Error",
     "success": "Success",
+    "auth_required": "Login Required",
     "retry": "Retry",
     "from": "From",
     "to": "To",
@@ -78,7 +81,6 @@
     "good_morning": "Good morning,",
     "reader": "Reader",
     "ai_insights": "AI Insights • Analysis",
-    "all": "All",
     "literature": "Literature",
     "science": "Science",
     "history": "History",
@@ -86,7 +88,6 @@
     "art": "Art",
     "offline_mode": "You are in offline mode",
     "syncing_activities": "Syncing {{count}} activities...",
-    "subjects": "Subjects",
     "subject": "Subject",
     "uncategorized": "Uncategorized",
     "text_search": "Text",
@@ -115,7 +116,9 @@
     "updating": "Updating...",
     "due": "Due",
     "yesterday": "Yesterday",
-    "start": "Start"
+    "start": "Start",
+    "see_more": "See more",
+    "see_less": "See less"
   },
   "months": {
     "jan": "Jan",
@@ -215,11 +218,14 @@
     "locked_title": "Account Locked",
     "locked_msg": "Your account has been locked by an administrator. Please contact a librarian for details.",
     "wrong_creds": "Invalid email or password",
-    "session_expired": "Session expired"
+    "session_expired": "Session expired",
+    "login_to_review": "Please login to write a review",
+    "account_locked": "Your account is currently locked"
   },
   "roles": {
     "librarian": "Librarian",
-    "admin": "Administrator",
+    "admin": "Admin",
+    "super_admin": "Super Admin",
     "member": "Member",
     "guest": "Guest"
   },
@@ -364,7 +370,6 @@
     "active_deliveries": "Active Deliveries",
     "in_transit": "In Transit",
     "delivered": "Delivered",
-    "recent_activity": "Recent Activity",
     "status_in_progress": "In Progress",
     "status_scheduled": "Scheduled",
     "from_label": "From: {{name}}",
@@ -379,13 +384,10 @@
     "web_map_subtitle": "Interactive map is optimized for mobile. Detailed distribution list is shown below.",
     "source_warehouse": "Source Warehouse",
     "destination": "Destination",
-    "visual_map": "Geospatial Map",
+    "visual_map": "Logistics Command Center",
     "china": "CHINA",
     "laos": "LAOS",
     "cambodia": "CAMBODIA",
-    "east_sea": "EAST SEA",
-    "hoang_sa": "Hoang Sa Archipelago",
-    "truong_sa": "Truong Sa Archipelago",
     "ai_enrich": "AI Enrich",
     "ai_assistant_short": "AI Assistant",
     "ai_enrich_title": "Bulk AI Metadata Enrichment",
@@ -447,7 +449,18 @@
     "user_locked": "Account locked successfully",
     "user_unlocked": "Account unlocked successfully",
     "priority_high": "Priority: High",
-    "priority_standard": "Standard"
+    "priority_standard": "Standard",
+    "start_shipping": "Start Shipping",
+    "complete_shipping": "Complete Delivery",
+    "recent_activity": "Recent Activity",
+    "logistics_web_view": "Logistics Operations Center",
+    "logistics_command_center": "LOGISTICS COMMAND CENTER",
+    "central_city_hub": "Central City Hub",
+    "provincial_hub": "Provincial Hub",
+    "sovereignty_active": "Active Sovereignty Zone",
+    "hoang_sa": "Paracel Islands (VN)",
+    "truong_sa": "Spratly Islands (VN)",
+    "east_sea": "EAST SEA (VIETNAM)"
   },
   "tabs": {
     "home": "Home",
@@ -559,9 +572,30 @@
     "genre_distribution": "Genre Distribution",
     "ai_recs": "BiblioAI Recommendations",
     "ai_recs_desc": "Based on your reading history",
+    "recommended_for_you": "Recommended for You",
+    "tab_interests": "Interests",
+    "tab_biblio_ai": "BiblioAI",
+    "update_interests_cta": "Update Interests",
+    "no_interests_msg": "Select your favorite genres for better recommendations.",
     "featured_books": "Featured Books",
     "limit_5": "5 books",
-    "overdue_warning": "Overdue Warning"
+    "overdue_warning": "Overdue Warning",
+    "borrowed_by_you": "Borrowed by you",
+    "add_to_cart": "Add to order",
+    "request_borrow": "Request Borrow",
+    "select_branch_to_borrow": "Select a branch to borrow",
+    "similar_books": "Similar Books",
+    "ai_summary": "Summary by BiblioAI",
+    "ai_summary_desc": "Content automatically analyzed and summarized by artificial intelligence.",
+    "appendix_docs": "Appendix & Attached Documents",
+    "no_appendix": "No attached documents",
+    "notifications": {
+      "all": "All",
+      "system": "System",
+      "clubs": "Clubs",
+      "empty": "No notifications in this category",
+      "unread_count": "You have {{count}} unread notifications"
+    }
   },
   "profile": {
     "id": "ID",
@@ -630,15 +664,55 @@
     "borrow_history": "Borrow History",
     "level": "Level",
     "next_level": "{{points}} points to next level",
-    "exp_points": "Experience Points"
+    "exp_points": "Experience Points",
+    "badge_new_listener": "New Listener",
+    "badge_novice_reader": "Novice Reader",
+    "badge_critic": "Critic",
+    "badge_return_champion": "Return Champion",
+    "badge_audiobook_expert": "Audiobook Expert",
+    "badge_true_bookworm": "True Bookworm",
+    "badge_loyal_reader": "Loyal Reader",
+    "badge_desc_new_listener": "Start listening to your first audiobook",
+    "badge_desc_novice_reader": "Start your journey with your first book",
+    "badge_desc_critic": "Leave 5 reviews for book titles",
+    "badge_desc_return_champion": "Return books on time 5 consecutive times",
+    "badge_desc_audiobook_expert": "Complete listening to 5 audiobooks",
+    "badge_desc_true_bookworm": "Borrow more than 10 books",
+    "badge_desc_loyal_reader": "Borrow more than 50 books",
+    "download_filename": "BiblioTech_Member_Card_{{name}}.png",
+    "share_title_card": "Share BiblioTech Member Pass"
   },
   "messages": {
-    "avatar_updated": "Profile picture updated!",
+    "avatar_updated": "Profile picture updated successfully!",
     "upload_failed": "Failed to upload image",
     "delete_success": "Deleted successfully",
     "save_success": "Saved successfully",
     "error_occurred": "Something went wrong",
-    "no_history": "You have no borrowing history"
+    "no_history": "No activity history found",
+    "your_review": "Your Review",
+    "write_review_placeholder": "Share your thoughts about this book...",
+    "submit_review": "Submit Review",
+    "community_reviews": "Community Reviews",
+    "no_reviews_yet": "No reviews yet. Be the first to share!",
+    "select_branch_error": "Please select a branch to borrow this book",
+    "out_of_stock_all_branches": "This book is currently out of stock nationwide. Please check back later.",
+    "borrow_success": "Book borrowed successfully!",
+    "pay_success": "Payment successful!",
+    "pay_amount": "Pay {{amount}}",
+    "pay_fine_title": "Pay Fine",
+    "confirm_transfer_sent": "Confirm transfer sent",
+    "history_a11y": "{{title}}, status {{status}}. Borrowed on {{date}}.",
+    "id_card_generated": "Member card generated!",
+    "share_success": "Shared successfully!",
+    "rating_required": "Please select a rating",
+    "review_success": "Thank you for your review!",
+    "review_failed": "Failed to post review",
+    "annotation_success": "Your note has been shared!",
+    "annotation_failed": "Could not save note at this time",
+    "book_not_found": "Book info not found",
+    "semantic_search_failed": "AI Search is currently unavailable",
+    "borrow_pending": "Processing book borrow...",
+    "borrow_queued_offline": "Borrow request saved and will sync when online."
   },
   "audiobook": {
     "title": "Audiobooks",
@@ -670,6 +744,7 @@
     "close": "Close",
     "turn_off_timer": "Turn off timer",
     "minutes_short": "mins",
+    "error_loading": "Could not load audiobook info. Please check your connection.",
     "chapter1": "Chapter 1: The Beginning",
     "chapter2": "Chapter 2: The Challenge",
     "chapter3": "Chapter 3: The End",
@@ -691,6 +766,12 @@
     "empty_feed": "No new activities yet.",
     "search_placeholder": "Search clubs or events...",
     "empty_feed_sub": "Borrow a book or leave a review to be the first!",
+    "annotations_title": "Notes & Thoughts",
+    "public": "Public",
+    "reader": "Reader",
+    "empty_annotations": "No annotations yet. Be the first!",
+    "write_thought": "Write your thoughts...",
+    "save_annotation": "Save Note",
     "activity": "ACTIVITY",
     "clubs": "CLUBS",
     "leaderboard": "LEADERBOARD",
@@ -719,10 +800,11 @@
   },
   "search": {
     "voice_search": "Voice Search",
-    "reset_all": "Reset All"
-  },
-  "audiobooks": {
-    "close": "Close"
+    "reset_all": "Reset All",
+    "voice_phrase_4": "How to win friends and influence people",
+    "voice_phrase_5": "Startup books",
+    "voice_phrase_6": "Find detective novels",
+    "voice_phrase_7": "Harry Potter recommendations"
   },
   "settings": {
     "system_settings": "System Settings",
@@ -751,7 +833,19 @@
     "page_count": "Page Count",
     "language": "Language",
     "average_rating": "Average Rating",
-    "edition": "Edition"
+    "edition": "Edition",
+    "tabs": {
+      "description": "Description",
+      "annotations": "Annotations",
+      "appendix": "Appendix",
+      "details": "Details"
+    },
+    "empty": {
+      "description": "No description available for this book.",
+      "appendix": "No appendix available for this book.",
+      "annotations": "No annotations yet. Be the first to share your thoughts!",
+      "annotations_placeholder": "Share a note or highlight..."
+    }
   },
   "ai": {
     "ask_assistant": "Ask Assistant",
@@ -759,6 +853,11 @@
     "placeholder": "Type a question for the assistant...",
     "welcome_msg": "Hello! I am BiblioAI. How can I help with your reading journey today?",
     "assistant_title": "BiblioAI Assistant",
-    "ready_to_help": "Ready to help"
+    "ready_to_help": "Ready to help",
+    "analyzing_data": "Analyzing book data...",
+    "summary_error": "Unable to load summary at this time."
+  },
+  "offline": {
+    "mode": "Offline Mode"
   }
 }

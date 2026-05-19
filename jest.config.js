@@ -2,10 +2,10 @@
 const config = {
   rootDir: '.',
 
-  preset: 'react-native',
+  preset: 'jest-expo',
 
 
-  testEnvironment: 'node',
+
   setupFilesAfterEnv: ['<rootDir>/tests/unit/setup.tsx'],
   automock: false,
   testPathIgnorePatterns: [
@@ -30,6 +30,7 @@ const config = {
     '^../api/supabase$': '<rootDir>/tests/__mocks__/api/supabase.js',
     '^../../src/api/supabase$': '<rootDir>/tests/__mocks__/api/supabase.js',
     '^../../api/supabase$': '<rootDir>/tests/__mocks__/api/supabase.js',
+    '^../../../api/supabase$': '<rootDir>/tests/__mocks__/api/supabase.js',
   },
 
 

@@ -5,7 +5,7 @@ import { useAuthStore } from "../../store/useAuthStore";
 
 export function useClubChat(clubId: string) {
   const queryClient = useQueryClient();
-  const profile = useAuthStore(state => state.profile);
+  const profile = useAuthStore((state) => state.profile);
   const [lastReaction, setLastReaction] = useState<any>(null);
   const [typingUsers, setTypingUsers] = useState<string[]>([]);
   const [onlineCount, setOnlineCount] = useState(0);
@@ -65,7 +65,9 @@ export function useClubChat(clubId: string) {
       queryFn: async () => {
         const { data, error } = await supabase
           .from("book_club_messages")
-          .select("*, profiles:user_id(fullName:full_name, avatarUrl:avatar_url)")
+          .select(
+            "*, profiles:user_id(fullName:full_name, avatarUrl:avatar_url)",
+          )
           .eq("club_id", clubId)
           .order("created_at", { ascending: true });
         if (error) throw error;

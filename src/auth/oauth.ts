@@ -3,6 +3,7 @@ import * as WebBrowser from "expo-web-browser";
 import { Platform } from "react-native";
 
 import { supabase } from "../api/supabase";
+import { useAuthStore } from "../store/useAuthStore";
 
 export type OAuthProvider = "google" | "github";
 
@@ -17,11 +18,11 @@ export function completeAuthSession() {
 export async function signInWithOAuthProvider(
   provider: OAuthProvider,
 ): Promise<void> {
-  if (Platform.OS === "web") {
-    // Trên Web: để Supabase tự redirect — không cần openAuthSessionAsync
-    const redirectTo =
-      typeof window !== "undefined" ? window.location.origin : "";
+  // Clear any existing partial state before starting
+  await supabase.auth.signOut({ scope: "local" });
 
+  if (Platform.OS === "web") {
+    const redirectTo = typeof window !== "undefined" ? window.location.origin : "";
     const { error } = await supabase.auth.signInWithOAuth({
       provider,
       options: {
@@ -29,31 +30,27 @@ export async function signInWithOAuthProvider(
         skipBrowserRedirect: false,
       },
     });
-
     if (error) throw new Error(error.message);
-    // Trang sẽ tự redirect — không cần làm thêm gì
     return;
   }
 
   // ---- NATIVE (Expo Go / Standalone) ----
-  // Expo Go dùng scheme "exp://" — Linking.createURL("/") sẽ trả về đúng URL
-  const redirectTo = Linking.createURL("/");
+  // Tự động tạo URL phản hồi phù hợp với môi trường (Expo Go hoặc App thật)
+  const redirectTo = Linking.createURL("auth-callback");
+  console.log("[OAuth] Using Redirect URL:", redirectTo);
 
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider,
     options: {
       redirectTo,
-      skipBrowserRedirect: true, // Mình tự mở browser bên dưới
+      skipBrowserRedirect: true,
     },
   });
 
   if (error) throw new Error(error.message);
+  if (!data?.url) throw new Error("Không thể khởi tạo liên kết xác thực OAuth");
 
-  if (!data?.url) {
-    throw new Error("Không thể khởi tạo liên kết xác thực OAuth");
-  }
-
-  // Mở trình duyệt trong app và chờ callback URL
+  // Open the browser and wait for the result
   const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
 
   if (result.type === "cancel" || result.type === "dismiss") {
@@ -61,48 +58,70 @@ export async function signInWithOAuthProvider(
   }
 
   if (result.type === "success" && result.url) {
+    console.log("[OAuth] Browser returned with URL:", result.url);
     await handleNativeOAuthCallback(result.url);
   }
 }
 
 /**
- * Xử lý URL callback sau khi trình duyệt đóng trên native.
- * Hỗ trợ cả PKCE (code) lẫn Implicit (access_token trong hash).
+ * Enhanced callback handler for Native environments.
+ * Extracts tokens/codes even from non-standard Expo Go URLs.
  */
 async function handleNativeOAuthCallback(callbackUrl: string): Promise<void> {
   try {
-    // Ưu tiên: thử lấy session mà Supabase đã tự lưu
-    const { data: sessionData } = await supabase.auth.getSession();
-    if (sessionData?.session) return;
+    // 1. Normalize the URL (Handle exp://.../--/ or libraryapp://)
+    // We use regex to find the fragments because URL parser can fail on non-standard schemes
+    const getParam = (name: string) => {
+      const regex = new RegExp(`[#?&]${name}=([^&]*)`);
+      const match = callbackUrl.match(regex);
+      return match ? decodeURIComponent(match[1]) : null;
+    };
 
-    // Parse URL để lấy token thủ công
-    const parsed = new URL(callbackUrl);
+    const code = getParam("code");
+    const accessToken = getParam("access_token");
+    const refreshToken = getParam("refresh_token");
 
-    // PKCE flow: ?code=...
-    const code = parsed.searchParams.get("code");
+    console.log("[OAuth] Detected in URL:", { 
+      hasCode: !!code, 
+      hasAccessToken: !!accessToken 
+    });
+
     if (code) {
-      const { error } = await supabase.auth.exchangeCodeForSession(code);
-      if (error) throw new Error(error.message);
-      return;
-    }
+      // PKCE Flow
+      const { data, error } = await supabase.auth.exchangeCodeForSession(code);
 
-    // Implicit flow: #access_token=...&refresh_token=...
-    const hash = parsed.hash.startsWith("#")
-      ? parsed.hash.substring(1)
-      : parsed.hash;
-    const hashParams = new URLSearchParams(hash);
-    const accessToken = hashParams.get("access_token");
-    const refreshToken = hashParams.get("refresh_token");
+      if (error) {
+        console.error("[OAuth] Exchange error:", error.message);
+        throw error;
+      }
 
-    if (accessToken && refreshToken) {
+      if (data.session) {
+        console.log("[OAuth] Session established successfully, syncing store...");
+        
+        // Explicitly update our store to trigger navigation immediately
+        const { setSession } = useAuthStore.getState();
+        await setSession(data.session);
+
+        console.log("[OAuth] Store synced. Navigation should trigger.");
+      }
+    } else if (accessToken && refreshToken) {
+      // Implicit Flow fallback
       const { error } = await supabase.auth.setSession({
         access_token: accessToken,
         refresh_token: refreshToken,
       });
-      if (error) throw new Error(error.message);
+      if (error) throw error;
+    } else {
+      // Fallback: If nothing in URL, maybe Supabase already picked it up?
+      const { data } = await supabase.auth.getSession();
+      if (!data.session) {
+        throw new Error("Không tìm thấy thông tin xác thực trong phản hồi");
+      }
     }
+    
+    console.log("[OAuth] Session established successfully");
   } catch (err: any) {
-    console.warn("[OAuth] handleNativeOAuthCallback error:", err?.message);
-    // Không throw — onAuthStateChange trong _layout sẽ bắt session nếu có
+    console.error("[OAuth] Callback Processing Error:", err.message);
+    throw err;
   }
 }

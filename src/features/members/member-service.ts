@@ -68,6 +68,12 @@ export const membersService = {
         p_branch_id: branchId,
       });
       if (error) throw error;
+      
+      // Handle logical failures from RPC
+      if (data && data.success === false) {
+        throw new Error(data.message || "Borrowing failed");
+      }
+      
       return data;
     } catch (err: any) {
       if (err.message === "Failed to fetch" || !err.status) {
@@ -181,7 +187,12 @@ export const membersService = {
     }));
   },
 
-  async addXP(amount: number, userId: string, p_currentXP?: number, p_currentLevel?: number) {
+  async addXP(
+    amount: number,
+    userId: string,
+    p_currentXP?: number,
+    p_currentLevel?: number,
+  ) {
     if (!userId) return;
 
     let currentXP = p_currentXP;
@@ -206,7 +217,7 @@ export const membersService = {
       .eq("id", userId);
 
     if (error) throw error;
-    
+
     return { newXP, newLevel, leveledUp: newLevel > (currentLevel || 1) };
   },
 
@@ -256,7 +267,8 @@ export const membersService = {
     const result = await download.downloadAsync();
     if (!result) throw new Error("Download failed");
 
-    const downloads = (await persistence.getItem("BIBLIO_OFFLINE_DOWNLOADS")) || [];
+    const downloads =
+      (await persistence.getItem("BIBLIO_OFFLINE_DOWNLOADS")) || [];
     const newDownload: DownloadedFile = {
       id,
       title,
@@ -276,13 +288,15 @@ export const membersService = {
   },
 
   async getLocalUri(id: string): Promise<string | null> {
-    const downloads = (await persistence.getItem("BIBLIO_OFFLINE_DOWNLOADS")) || [];
+    const downloads =
+      (await persistence.getItem("BIBLIO_OFFLINE_DOWNLOADS")) || [];
     const file = downloads.find((d: DownloadedFile) => d.id === id);
     return file ? file.uri : null;
   },
-  
+
   async deleteDownload(id: string) {
-    const downloads = (await persistence.getItem("BIBLIO_OFFLINE_DOWNLOADS")) || [];
+    const downloads =
+      (await persistence.getItem("BIBLIO_OFFLINE_DOWNLOADS")) || [];
     const file = downloads.find((d: DownloadedFile) => d.id === id);
     if (file) {
       try {
@@ -294,7 +308,7 @@ export const membersService = {
   },
 
   async queueAction(type: string, payload: any) {
-    const queue = (await this.getActionQueue());
+    const queue = await this.getActionQueue();
     await persistence.saveItem("BIBLIO_OFFLINE_ACTION_QUEUE", [
       ...queue,
       { id: Date.now().toString(), type, payload, timestamp: Date.now() },
@@ -346,10 +360,12 @@ export const membersService = {
 
     return (data || []).map((ann: any) => ({
       ...ann,
-      profiles: ann.profiles ? {
-        fullName: ann.profiles.fullName,
-        avatarUrl: ann.profiles.avatarUrl,
-      } : null,
+      profiles: ann.profiles
+        ? {
+            fullName: ann.profiles.fullName,
+            avatarUrl: ann.profiles.avatarUrl,
+          }
+        : null,
       user: ann.profiles
         ? {
             fullName: ann.profiles.fullName,
@@ -397,8 +413,10 @@ export const membersService = {
     type: "LIKE" | "BOOKMARK" | "COMPLETED",
     currentState: boolean,
   ) {
-    console.log(`[membersService] toggleInteraction: userId=${userId}, itemId=${itemId}, itemType=${itemType}, type=${type}, currentState=${currentState}`);
-    
+    console.log(
+      `[membersService] toggleInteraction: userId=${userId}, itemId=${itemId}, itemType=${itemType}, type=${type}, currentState=${currentState}`,
+    );
+
     if (!userId || userId === "undefined" || userId === null) return;
     if (!itemId) return;
 
@@ -420,7 +438,7 @@ export const membersService = {
           .from("user_interactions")
           .delete()
           .eq("id", existing.id);
-        
+
         if (error) throw error;
       } else {
         // If it doesn't exist, we add it
@@ -431,7 +449,7 @@ export const membersService = {
           item_type: itemType,
           interaction_type: type,
         });
-        
+
         if (error) throw error;
       }
     } catch (err: any) {

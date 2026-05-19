@@ -97,27 +97,22 @@ export default function LoginScreen() {
 
     setLoading(true);
     try {
+      console.log(`[Login] Starting OAuth flow for ${provider}...`);
       await signInWithOAuthProvider(provider);
 
-      // Trên native: sau khi browser đóng, fetch session mới nhất
+      // Once the browser closes, wait a tiny bit for Supabase to sync
+      // and then check for session if onAuthStateChange hasn't fired yet
       if (Platform.OS !== "web") {
         const { data } = await supabase.auth.getSession();
         if (data?.session) {
+          console.log("[Login] OAuth Session detected manually");
           await setSession(data.session);
-        } else {
-          // Session chưa có — onAuthStateChange trong _layout sẽ xử lý
-          const providerLabel = provider === "google" ? "Google" : "GitHub";
-          Alert.alert(
-            "Hoàn tất xác thực",
-            `Vui lòng hoàn tất đăng nhập ${providerLabel} trong trình duyệt.`,
-          );
         }
       }
-      // Trên Web: trang tự redirect — không cần Alert
     } catch (error: any) {
-      // Không hiện lỗi nếu user tự hủy
+      console.error("[Login] OAuth Error:", error.message);
       if (!error.message?.includes("hủy")) {
-        Alert.alert("Đăng nhập thất bại", error.message);
+        Alert.alert(t("common.error"), error.message);
       }
     } finally {
       setLoading(false);

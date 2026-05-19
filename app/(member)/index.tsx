@@ -60,7 +60,14 @@ export default function MemberHome() {
   const session = useAuthStore((state) => state.session);
   const logout = useAuthStore((state) => state.logout);
   const updateAvatar = useAuthStore((state) => state.updateAvatar);
-  const { books, borrows, recommendations, feed, stats: kernelStats, getCollection } = useLibrary();
+  const {
+    books,
+    borrows,
+    recommendations,
+    feed,
+    stats: kernelStats,
+    getCollection,
+  } = useLibrary();
   const { latestMessage, dismissLatest } = useBroadcast();
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
@@ -113,16 +120,24 @@ export default function MemberHome() {
         Alert.alert(t("common.success"), t("messages.avatar_updated"));
       }
     } catch (error: any) {
-      Alert.alert(t("common.error"), error.message || t("messages.upload_failed"));
+      Alert.alert(
+        t("common.error"),
+        error.message || t("messages.upload_failed"),
+      );
     } finally {
       setUploadingAvatar(false);
     }
   };
+  const [activeRecTab, setActiveRecTab] = useState<"interests" | "ai">("interests");
   const { points, level, currentLevelXP, nextLevelXP } = useGamification(
     profile?.id || "",
   );
   const [queueCount, setQueueCount] = useState(0);
-  const { data: recBooks, isLoading: isRecLoading } = recommendations.get(6);
+  const { data: interestRecs, isLoading: isInterestLoading } = recommendations?.interests?.() || { data: [], isLoading: false };
+  const { data: semanticRecs, isLoading: isSemanticLoading } = recommendations?.get?.(6) || { data: [], isLoading: false };
+
+  const recBooks = activeRecTab === 'interests' ? interestRecs : semanticRecs;
+  const isRecLoading = activeRecTab === 'interests' ? isInterestLoading : isSemanticLoading;
   const { data: feedData, isLoading: isFeedLoading } = feed.getCommunityFeed();
 
   const [showNotifications, setShowNotifications] = useState(false);
@@ -242,17 +257,19 @@ export default function MemberHome() {
               myBorrows.map((b: any) => b.book?.category || "").filter(Boolean),
             ),
           ) as string[];
-  
+
           const results = await ai.getRecommendationsByProfile(
             titles,
             categories,
           );
-  
+
           // Filter out books already borrowed
           const borrowedIsbns = new Set(
             myBorrows.map((b: any) => b.book?.isbn).filter(Boolean),
           );
-          const filteredBooks = results.filter((b: any) => !borrowedIsbns.has(b.isbn));
+          const filteredBooks = results.filter(
+            (b: any) => !borrowedIsbns.has(b.isbn),
+          );
 
           setAiRecs(filteredBooks.slice(0, 5));
         } catch (error) {
@@ -335,17 +352,50 @@ export default function MemberHome() {
     return `${days} ${t("common.days_ago", { days })}`;
   };
 
-  const [activeCategory, setActiveCategory] = useState("All");
-  const categories = ["All", "Văn học", "Khoa học", "Lịch sử", "Công nghệ", "Nghệ thuật"];
+  const [activeCategory, setActiveCategory] = useState("all");
+  const categories = [
+    "all",
+    "Fiction",
+    "Business & Economics",
+    "Science",
+    "Computers",
+    "Psychology",
+    "History",
+    "Technology",
+    "Art",
+    "Children's Books",
+  ];
+
+  const filteredBooks = React.useMemo(() => {
+    if (!myBooks) return [];
+    if (activeCategory === "all") return myBooks;
+    
+    return myBooks.filter((book: any) => {
+      const cat = (book.category || "").toLowerCase();
+      const googleCats = book.google_data?.categories?.map((c: string) => c.toLowerCase()) || [];
+      const targetKey = activeCategory.toLowerCase();
+      
+      // Check direct category, google_data categories, and translated matches
+      const isMatch = cat === targetKey || 
+                    googleCats.includes(targetKey) ||
+                    String(t(`categories.${book.category}`)).toLowerCase() === targetKey;
+      
+      return isMatch;
+    });
+  }, [myBooks, activeCategory, t]);
   const getCategoryLabel = (cat: string) => {
-    if (cat === "All") return t("common.all");
+    if (cat === "all") return t("common.all");
     return t(`categories.${cat}`, cat);
   };
 
   // Real-time stats & Overdue logic from Kernel
-  const { activeCount: activeBorrowedCount, totalFine, hasOverdue } = kernelStats;
+  const {
+    activeCount: activeBorrowedCount,
+    totalFine,
+    hasOverdue,
+  } = kernelStats;
 
-  const featuredBooks = getCollection('trending', 5);
+  const featuredBooks = getCollection("trending", 5);
 
   const stats = React.useMemo(
     () => [
@@ -406,7 +456,10 @@ export default function MemberHome() {
 
   const borrowStats = React.useMemo(() => {
     const statsArr = [0, 0, 0, 0, 0, 0];
-    myBorrows?.forEach((b: BorrowRecord) => {
+    if (!myBorrows || myBorrows.length === 0) return statsArr;
+
+    myBorrows.forEach((b: BorrowRecord) => {
+      if (!b.borrowed_at) return;
       const date = new Date(b.borrowed_at);
       const diff = Math.floor(
         (new Date().getTime() - date.getTime()) / (1000 * 3600 * 24 * 30),
@@ -463,7 +516,9 @@ export default function MemberHome() {
         >
           <View style={styles.greetingRow}>
             <View>
-              <Text style={styles.friendlyGreeting}>{t("common.good_morning")}</Text>
+              <Text style={styles.friendlyGreeting}>
+                {t("common.good_morning")}
+              </Text>
               <Text style={styles.friendlyName}>
                 {profile?.fullName || t("common.reader")}
               </Text>
@@ -735,7 +790,9 @@ export default function MemberHome() {
                   {t("member.overdue_warning")}
                 </Text>
                 <Text style={styles.bannerSubtitle}>
-                  {t("member.overdue_fine_notice", { amount: totalFine.toLocaleString() })}
+                  {t("member.overdue_fine_notice", {
+                    amount: totalFine.toLocaleString(),
+                  })}
                 </Text>
               </View>
               <Ionicons
@@ -749,7 +806,7 @@ export default function MemberHome() {
         )}
 
         {/* Sync Stats Cards - Matching Librarian Classic Layout */}
-        <View style={styles.statsRow} accessibilityLabel="Thống kê tóm tắt">
+        <View style={styles.statsRow} accessibilityLabel={t("common.summary_stats")}>
           {stats.map((stat, index) => (
             <AnimatedWrapper
               key={index}
@@ -808,11 +865,13 @@ export default function MemberHome() {
             </View>
             <View style={styles.chartRow}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.chartLabel}>{t("member.knowledge_growth")}</Text>
+                <Text style={styles.chartLabel}>
+                  {t("member.knowledge_growth")}
+                </Text>
                 {myBorrows?.length > 0 ? (
                   <LineChart
                     data={{
-                      labels: ["T-5", "T-4", "T-3", "T-2", "T-1", "T0"],
+                      labels: ["M-5", "M-4", "M-3", "M-2", "M-1", "M0"],
                       datasets: [{ data: borrowStats }],
                     }}
                     width={width - 80}
@@ -834,7 +893,9 @@ export default function MemberHome() {
             </View>
 
             <View style={{ marginTop: 24 }}>
-              <Text style={styles.chartLabel}>{t("member.fav_genre_distribution")}</Text>
+              <Text style={styles.chartLabel}>
+                {t("member.fav_genre_distribution")}
+              </Text>
               {genreData?.length > 0 ? (
                 <PieChart
                   data={genreData}
@@ -902,6 +963,7 @@ export default function MemberHome() {
                           style={[
                             styles.avatarPlaceholder,
                             {
+                              opacity: activity.isActive ? 1 : 0.4,
                               backgroundColor:
                                 activity.type === "BORROW"
                                   ? "#3A75F2"
@@ -945,64 +1007,108 @@ export default function MemberHome() {
           )}
         </View>
 
-        {/* Recommendations Section */}
-        {(aiRecs.length > 0 || (recBooks?.length || 0) > 0) && (
-          <View style={styles.recommendationContainer}>
-            <View style={styles.sectionHeader}>
-              <View>
-                <Text style={styles.sectionTitle}>{t("member.ai_recs")}</Text>
-                <Text style={styles.sectionSubtitle}>
-                  {t("member.ai_recs_desc")}
+        {/* Unified Personalized Recommendations Section */}
+        <View style={styles.recommendationContainer}>
+          <View style={styles.recommendationHeader}>
+            <View style={styles.recTabGroup}>
+              <TouchableOpacity 
+                onPress={() => setActiveRecTab('interests')}
+                style={[styles.recTab, activeRecTab === 'interests' && styles.activeRecTab]}
+              >
+                <Text style={[styles.recTabText, activeRecTab === 'interests' && styles.activeRecTabText]}>
+                  {t("member.tab_interests")}
                 </Text>
-              </View>
-              {isAiLoading ? (
-                <ActivityIndicator size="small" color="#3A75F2" />
-              ) : (
-                <View style={styles.aiBadge}>
-                  <Ionicons name="sparkles" size={12} color="#FFFFFF" />
-                  <Text style={styles.aiBadgeText}>AI Powered</Text>
-                </View>
-              )}
+              </TouchableOpacity>
+              <TouchableOpacity 
+                onPress={() => setActiveRecTab('ai')}
+                style={[styles.recTab, activeRecTab === 'ai' && styles.activeRecTab]}
+              >
+                <Text style={[styles.recTabText, activeRecTab === 'ai' && styles.activeRecTabText]}>
+                  {t("member.tab_biblio_ai")}
+                </Text>
+              </TouchableOpacity>
             </View>
-            <ScrollView
-              horizontal
+            
+            {activeRecTab === 'interests' && (!profile?.favoriteGenres || profile.favoriteGenres.length === 0) && (
+              <TouchableOpacity 
+                style={styles.updateInterestsBtn}
+                onPress={() => router.push('/(member)/profile')}
+              >
+                <Text style={styles.updateInterestsText}>{t("member.update_interests_cta")}</Text>
+              </TouchableOpacity>
+            )}
+
+            {activeRecTab === 'ai' && (
+              <View style={styles.aiBadge}>
+                <Ionicons name="sparkles" size={10} color="#FFFFFF" />
+                <Text style={styles.aiBadgeText}>BiblioAI</Text>
+              </View>
+            )}
+          </View>
+
+          {activeRecTab === 'interests' ? (
+            (!profile?.favoriteGenres || profile.favoriteGenres.length === 0) ? (
+              <View style={styles.emptyRecsContainer}>
+                <View style={styles.emptyRecsIconBg}>
+                  <Ionicons name="heart-outline" size={32} color="#3A75F2" />
+                </View>
+                <Text style={styles.emptyRecsText}>{t("member.no_interests_msg")}</Text>
+              </View>
+            ) : (
+              <ScrollView 
+                horizontal 
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.horizontalScrollPadding}
+                style={styles.carousel}
+              >
+                {recommendations.interests().data?.map((book: any, idx: number) => (
+                  <AnimatedWrapper
+                    key={book.isbn}
+                    index={idx}
+                    type="slide-right"
+                    style={styles.recCard}
+                    onPress={() => router.push(`/(member)/book/${book.isbn}` as any)}
+                  >
+                    <Image source={{ uri: book.cover_url }} style={styles.recImage} />
+                    <View style={styles.recInfo}>
+                      <Text style={styles.recTitle} numberOfLines={1}>{book.title}</Text>
+                      <View style={styles.recRating}>
+                        <Ionicons name="star" size={12} color="#F59E0B" />
+                        <Text style={styles.recRatingText}>{book.average_rating || "4.5"}</Text>
+                      </View>
+                    </View>
+                  </AnimatedWrapper>
+                ))}
+              </ScrollView>
+            )
+          ) : (
+            <ScrollView 
+              horizontal 
               showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.horizontalScrollPadding}
               style={styles.carousel}
             >
-              {(aiRecs.length > 0 ? aiRecs : recBooks)?.map((book: any, index: number) => (
+              {recommendations.get().data?.map((book: any, idx: number) => (
                 <AnimatedWrapper
                   key={book.isbn}
-                  index={index}
+                  index={idx}
                   type="slide-right"
-                  onPress={() =>
-                    router.push(`/(member)/book/${book.isbn}` as any)
-                  }
                   style={styles.recCard}
+                  onPress={() => router.push(`/(member)/book/${book.isbn}` as any)}
                 >
-                  <Image
-                    source={{
-                      uri:
-                        book.cover_url ||
-                        "https://via.placeholder.com/150x200?text=No+Cover",
-                    }}
-                    style={styles.recImage}
-                  />
+                  <Image source={{ uri: book.cover_url }} style={styles.recImage} />
                   <View style={styles.recInfo}>
-                    <Text style={styles.recTitle} numberOfLines={1}>
-                      {book.title}
-                    </Text>
+                    <Text style={styles.recTitle} numberOfLines={1}>{book.title}</Text>
                     <View style={styles.recRating}>
                       <Ionicons name="star" size={12} color="#F59E0B" />
-                      <Text style={styles.recRatingText}>
-                        {book.average_rating || "4.5"}
-                      </Text>
+                      <Text style={styles.recRatingText}>{book.average_rating || "4.5"}</Text>
                     </View>
                   </View>
                 </AnimatedWrapper>
               ))}
             </ScrollView>
-          </View>
-        )}
+          )}
+        </View>
 
         {/* Featured Section */}
         <View style={styles.sectionHeader}>
@@ -1046,6 +1152,8 @@ export default function MemberHome() {
           ))}
         </ScrollView>
 
+
+
         {/* Genre Chips */}
         <View style={{ marginHorizontal: 20, marginBottom: 16 }}>
           <Text style={styles.sectionTitle}>{t("common.subjects")}</Text>
@@ -1080,7 +1188,7 @@ export default function MemberHome() {
         </ScrollView>
 
         <View style={styles.booksGrid}>
-          {myBooks?.slice(5, 13).map((book: any, index: number) => (
+          {filteredBooks.slice(0, 12).map((book: any, index: number) => (
             <AnimatedWrapper
               key={book.isbn}
               index={index % 2}
@@ -1104,8 +1212,6 @@ export default function MemberHome() {
           ))}
         </View>
 
-
-
         <Modal visible={showAiModal} transparent animationType="slide">
           <BlurView intensity={80} tint="dark" style={styles.modalOverlay}>
             <View style={styles.aiModalContent}>
@@ -1115,7 +1221,9 @@ export default function MemberHome() {
               >
                 <View style={styles.aiModalHeader}>
                   <Ionicons name="sparkles" size={24} color="#FFD700" />
-                  <Text style={styles.aiModalTitle}>{t("common.ai_librarian")}</Text>
+                  <Text style={styles.aiModalTitle}>
+                    {t("common.ai_librarian")}
+                  </Text>
                   <TouchableOpacity onPress={() => setShowAiModal(false)}>
                     <Ionicons name="close" size={24} color="#8B8FA3" />
                   </TouchableOpacity>
@@ -1124,7 +1232,9 @@ export default function MemberHome() {
                   <Text style={styles.aiResponseText}>{aiResponse?.text}</Text>
                   {(aiResponse?.books?.length ?? 0) > 0 && (
                     <View style={styles.aiBooksSection}>
-                      <Text style={styles.aiSubTitle}>{t("common.books_suggested")}</Text>
+                      <Text style={styles.aiSubTitle}>
+                        {t("common.books_suggested")}
+                      </Text>
                       {aiResponse?.books?.map((book: any) => (
                         <TouchableOpacity
                           key={book.isbn || book.id}
@@ -1250,6 +1360,108 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 20,
     fontWeight: "bold",
+  },
+  recommendationHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    marginTop: 24,
+    marginBottom: 16,
+  },
+  recTabGroup: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(23, 27, 43, 0.8)',
+    borderRadius: 12,
+    padding: 4,
+    borderWidth: 1,
+    borderColor: '#1F263B',
+  },
+  recTab: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  activeRecTab: {
+    backgroundColor: '#3A75F2',
+  },
+  recTabText: {
+    color: '#8B8FA3',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  activeRecTabText: {
+    color: '#FFFFFF',
+  },
+  updateInterestsBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: 'rgba(58, 117, 242, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(58, 117, 242, 0.3)',
+  },
+  updateInterestsText: {
+    color: '#3A75F2',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  horizontalScrollPadding: {
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+  },
+  recCard: {
+    width: 140,
+    marginRight: 16,
+    borderRadius: 16,
+    overflow: 'hidden',
+    backgroundColor: '#171B2B',
+    borderWidth: 1,
+    borderColor: '#1F263B',
+  },
+  recImage: {
+    width: '100%',
+    height: 190,
+    borderRadius: 12,
+  },
+  recInfo: {
+    padding: 10,
+  },
+  recTitle: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: 'bold',
+    marginBottom: 2,
+  },
+  recAuthor: {
+    color: '#8A8F9E',
+    fontSize: 11,
+  },
+  emptyRecsContainer: {
+    marginHorizontal: 20,
+    padding: 24,
+    borderRadius: 20,
+    backgroundColor: 'rgba(58, 117, 242, 0.05)',
+    borderStyle: 'dashed',
+    borderWidth: 1,
+    borderColor: 'rgba(58, 117, 242, 0.3)',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  emptyRecsIconBg: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(58, 117, 242, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  emptyRecsText: {
+    color: '#8A8F9E',
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
   },
   searchContainer: {
     paddingHorizontal: 20,
@@ -1791,4 +2003,3 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 });
-

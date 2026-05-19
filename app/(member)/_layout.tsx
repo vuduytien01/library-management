@@ -6,17 +6,18 @@ import { View, Platform } from "react-native";
 import { BottomTabBar } from "@react-navigation/bottom-tabs";
 import ErrorBoundary from "../../src/components/ErrorBoundary";
 import { notificationService } from "../../src/core/notifications";
+import { BiblioAI } from "../../src/features/ai/BiblioAI";
 import { useAuthStore } from "../../src/store/useAuthStore";
 
 import { useSegments } from "expo-router";
 import { useTranslation } from "react-i18next";
 import { useTabBarStore } from "../../src/store/useTabBarStore";
+import { PremiumTabBar } from "../../src/components/PremiumTabBar";
 
 export default function MemberLayout() {
   const session = useAuthStore((state) => state.session);
   const router = useRouter();
   const { t } = useTranslation();
-
 
   const segments = useSegments();
   const isTabBarVisible = useTabBarStore((state) => state.isVisible);
@@ -57,58 +58,15 @@ export default function MemberLayout() {
   return (
     <ErrorBoundary>
       <View style={{ flex: 1 }}>
-        {Platform.OS === 'web' && (
-          <style>{`
-            .member-taskbar-container {
-              position: absolute;
-              bottom: 0;
-              left: 0;
-              right: 0;
-              transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.4s ease;
-              transform: translateY(calc(100% - 14px));
-              opacity: 0.4;
-              z-index: 100;
-            }
-            .member-taskbar-container:hover {
-              transform: translateY(0);
-              opacity: 1;
-            }
-          `}</style>
-        )}
         <Tabs
+          backBehavior="history"
           tabBar={(props) => (
-            <View className={Platform.OS === 'web' ? "member-taskbar-container" : ""}>
-              <BottomTabBar {...props} />
+            <View>
+              <PremiumTabBar {...props} />
             </View>
           )}
           screenOptions={{
             headerShown: false,
-            tabBarStyle: {
-              position: "absolute",
-              bottom: 8,
-              left: 12,
-              right: 12,
-              backgroundColor: "#0B0F1A",
-              borderColor: "transparent",
-              borderWidth: 0,
-              borderRadius: 16,
-              overflow: "hidden",
-              height: isMainScreen ? 65 : 65.1,
-              paddingBottom: 10,
-              transform: Platform.OS === 'web' ? [] : (isMainScreen || isTabBarVisible ? [{ translateY: 0 }] : [{ translateY: 65 }]),
-              opacity: Platform.OS === 'web' ? 1 : (isMainScreen || isTabBarVisible ? 1 : 0),
-            },
-            tabBarItemStyle: {
-              borderRightWidth: 1,
-              borderRightColor: "rgba(255, 255, 255, 0.08)",
-              height: "100%",
-            },
-            tabBarActiveTintColor: "#4F8EF7",
-            tabBarInactiveTintColor: "#5A5F7A",
-            tabBarLabelStyle: {
-              fontSize: 11,
-              fontWeight: "600",
-            },
           }}
         >
           <Tabs.Screen
@@ -130,7 +88,7 @@ export default function MemberLayout() {
             }}
           />
           <Tabs.Screen
-            name="audiobooks"
+            name="audiobooks/index"
             options={{
               title: t("tabs.audiobooks"),
               tabBarIcon: ({ color, size }) => (
@@ -141,6 +99,7 @@ export default function MemberLayout() {
           <Tabs.Screen
             name="community"
             options={{
+              href: null,
               title: t("tabs.community"),
               tabBarIcon: ({ color, size }) => (
                 <Ionicons name="people" color={color} size={size} />
@@ -150,6 +109,7 @@ export default function MemberLayout() {
           <Tabs.Screen
             name="history"
             options={{
+              href: null,
               title: t("tabs.history"),
               tabBarIcon: ({ color, size }) => (
                 <Ionicons name="time" color={color} size={size} />
@@ -168,7 +128,6 @@ export default function MemberLayout() {
 
           {/* Hidden screens from Tab Bar */}
           <Tabs.Screen name="audiobooks/[id]" options={{ href: null }} />
-          <Tabs.Screen name="audiobooks/index" options={{ href: null }} />
           <Tabs.Screen name="achievements" options={{ href: null }} />
           <Tabs.Screen name="ai-chat" options={{ href: null }} />
           <Tabs.Screen name="analytics" options={{ href: null }} />
@@ -181,6 +140,7 @@ export default function MemberLayout() {
           <Tabs.Screen name="club/index" options={{ href: null }} />
           <Tabs.Screen name="club/[id]" options={{ href: null }} />
         </Tabs>
+        <BiblioAI />
       </View>
     </ErrorBoundary>
   );

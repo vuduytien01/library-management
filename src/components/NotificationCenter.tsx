@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { format } from "date-fns";
-import { vi } from "date-fns/locale";
+import { vi, enUS } from "date-fns/locale";
+import { useTranslation } from "react-i18next";
 import { BlurView } from "expo-blur";
 import React, { useEffect, useState } from "react";
 import {
@@ -25,6 +26,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
   visible,
   onClose,
 }) => {
+  const { t, i18n } = useTranslation();
   const profile = useAuthStore((state) => state.profile);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -126,10 +128,10 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
           <BlurView intensity={90} tint="dark" style={styles.blurContainer}>
             <View style={styles.header}>
               <View>
-                <Text style={styles.title}>Thông báo</Text>
+                <Text style={styles.title}>{t("common.notifications")}</Text>
                 {unreadCount > 0 && (
                   <Text style={styles.subtitle}>
-                    Bạn có {unreadCount} thông báo chưa đọc
+                    {t("member.notifications.unread_count", { count: unreadCount })}
                   </Text>
                 )}
               </View>
@@ -163,10 +165,10 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
                     ]}
                   >
                     {tab === "ALL"
-                      ? "Tất cả"
+                      ? t("member.notifications.all")
                       : tab === "SYSTEM"
-                        ? "Hệ thống"
-                        : "Câu lạc bộ"}
+                        ? t("member.notifications.system")
+                        : t("member.notifications.clubs")}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -175,7 +177,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
             {loading && notifications.length === 0 ? (
               <View style={styles.emptyContainer}>
                 <ActivityIndicator color="#3A75F2" />
-                <Text style={styles.emptyText}>Đang tải...</Text>
+                <Text style={styles.emptyText}>{t("common.loading")}</Text>
               </View>
             ) : filteredNotifications.length === 0 ? (
               <View style={styles.emptyContainer}>
@@ -185,7 +187,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
                   color="#3D4260"
                 />
                 <Text style={styles.emptyText}>
-                  Chưa có thông báo nào trong mục này
+                  {t("member.notifications.empty")}
                 </Text>
               </View>
             ) : (
@@ -228,7 +230,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
                           {format(
                             new Date(item.created_at),
                             "HH:mm, dd/MM/yyyy",
-                            { locale: vi },
+                            { locale: i18n.language === "vi" ? vi : enUS },
                           )}
                         </Text>
                       </View>

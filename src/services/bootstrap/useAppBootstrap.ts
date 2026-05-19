@@ -1,8 +1,8 @@
-import { useEffect, useState, useRef } from 'react';
-import { useAuthStore } from '../../store/useAuthStore';
-import { supabase } from '../../api/supabase';
-import i18next from 'i18next';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useEffect, useState, useRef } from "react";
+import { useAuthStore } from "../../store/useAuthStore";
+import { supabase } from "../../api/supabase";
+import i18next from "i18next";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export interface BootstrapStatus {
   isReady: boolean;
@@ -28,8 +28,10 @@ export const useAppBootstrap = (): BootstrapStatus => {
     async function bootstrap() {
       try {
         // 1. Recover Session
-        const { data: { session } } = await supabase.auth.getSession();
-        
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
         if (isMounted) {
           if (session) {
             // setSession already calls fetchProfile internally
@@ -38,18 +40,19 @@ export const useAppBootstrap = (): BootstrapStatus => {
         }
 
         // 2. Initialize i18n
-        const savedLang = await AsyncStorage.getItem('user-language');
+        const savedLang = await AsyncStorage.getItem("user-language");
         if (i18next.isInitialized) {
-          await i18next.changeLanguage(savedLang || 'vi');
+          await i18next.changeLanguage(savedLang || "vi");
         }
 
         // 3. Finalize
         if (isMounted) forceInitialize();
-
       } catch (err) {
-        console.error('[Bootstrap] Error during initialization:', err);
+        console.error("[Bootstrap] Error during initialization:", err);
         if (isMounted) {
-          setError(err instanceof Error ? err : new Error('Unknown bootstrap error'));
+          setError(
+            err instanceof Error ? err : new Error("Unknown bootstrap error"),
+          );
           // Still force initialize to prevent infinite hang, even on error
           forceInitialize();
         }
@@ -59,7 +62,9 @@ export const useAppBootstrap = (): BootstrapStatus => {
     bootstrap();
 
     // 4. Listen for Auth Changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (isMounted) {
         await setSession(session);
       }
@@ -74,6 +79,6 @@ export const useAppBootstrap = (): BootstrapStatus => {
   return {
     isReady: initialized,
     hasSession: !!useAuthStore.getState().session,
-    error
+    error,
   };
 };

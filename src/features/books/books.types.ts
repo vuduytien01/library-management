@@ -51,7 +51,7 @@ export interface BookMetadata {
 
 export interface AudiobookRecord {
   id: string;
-  source_platform: 'fonos' | 'voizfm' | 'thuviensachnoi';
+  source_platform: 'fonos' | 'voizfm' | 'thuviensachnoi' | 'r2';
   source_id: string;
   source_url: string;
   preview_url: string | null;

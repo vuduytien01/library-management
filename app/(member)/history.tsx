@@ -8,6 +8,7 @@ import { payment } from '../../src/core/payment';
 const { generateVietQR } = payment;
 import { useAuthStore } from '../../src/store/useAuthStore';
 import { useRouter } from 'expo-router';
+import { InlineUndoButton } from '../../src/components/InlineUndoButton';
 
 export default function HistoryPage() {
   const { t } = useTranslation();
@@ -45,7 +46,7 @@ export default function HistoryPage() {
       onSuccess: () => {
         if (!isMounted) return;
         setShowQr(false);
-        Alert.alert(t('common.success'), "Đã thanh toán phí phạt thành công");
+        Alert.alert(t('common.success'), t('messages.pay_success'));
       },
       onError: (err: any) => {
         if (isMounted) Alert.alert(t('common.error'), err.message);
@@ -76,7 +77,11 @@ export default function HistoryPage() {
           <View 
             style={styles.card}
             accessibilityRole="text"
-            accessibilityLabel={`${record.book?.title}, trạng thái ${record.status}. Mượn ngày ${new Date(record.borrowed_at).toLocaleDateString()}.`}
+            accessibilityLabel={t('messages.history_a11y', {
+              title: record.book?.title,
+              status: record.status,
+              date: new Date(record.borrowed_at).toLocaleDateString()
+            })}
           >
             <Image 
               source={{ uri: record.book?.cover_url || "https://images.unsplash.com/photo-1543005120-019f2ef5ef73?q=80&w=200" }} 
@@ -100,10 +105,10 @@ export default function HistoryPage() {
                 style={styles.payBtn} 
                 onPress={() => handlePay(record)}
                 accessibilityRole="button"
-                accessibilityLabel={`Thanh toán phí phạt ${(record as any).estimated_fine.toLocaleString()} đồng`}
+                accessibilityLabel={t('messages.pay_amount', { amount: (record as any).estimated_fine.toLocaleString() })}
                 accessibilityHint="Nhấn để hiện mã QR thanh toán"
               >
-                <Text style={styles.payBtnText}>Pay {(record as any).estimated_fine.toLocaleString()}đ</Text>
+                <Text style={styles.payBtnText}>{t('messages.pay_amount', { amount: (record as any).estimated_fine.toLocaleString() })}</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -129,10 +134,10 @@ export default function HistoryPage() {
       <Modal visible={showQr} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Thanh toán Phí phạt</Text>
+            <Text style={styles.modalTitle}>{t('messages.pay_fine_title')}</Text>
             {qrUrl && <Image source={{ uri: qrUrl }} style={styles.qr} />}
             <TouchableOpacity style={styles.confirmBtn} onPress={confirmPayment}>
-              <Text style={styles.confirmBtnText}>Xác nhận đã chuyển khoản</Text>
+              <Text style={styles.confirmBtnText}>{t('messages.confirm_transfer_sent')}</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => setShowQr(false)}>
               <Text style={styles.cancelText}>{t('common.cancel')}</Text>

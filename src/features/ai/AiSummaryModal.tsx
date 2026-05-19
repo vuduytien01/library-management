@@ -5,6 +5,7 @@ import { BlurView } from 'expo-blur';
 import Markdown from 'react-native-markdown-display';
 import * as Speech from 'expo-speech';
 import Animated, { FadeInUp, SlideInDown } from 'react-native-reanimated';
+import { useTranslation } from 'react-i18next';
 
 
 const { height } = Dimensions.get('window');
@@ -18,6 +19,7 @@ interface AiSummaryModalProps {
 }
 
 export const AiSummaryModal: React.FC<AiSummaryModalProps> = ({ visible, onClose, summary, loading, bookTitle }) => {
+  const { t } = useTranslation();
   const [isSpeaking, setIsSpeaking] = React.useState(false);
 
   const handleSpeech = async () => {
@@ -65,7 +67,7 @@ export const AiSummaryModal: React.FC<AiSummaryModalProps> = ({ visible, onClose
               <View style={styles.aiIcon}>
                 <Ionicons name="sparkles" size={18} color="#4F8EF7" />
               </View>
-              <Text style={styles.headerTitle}>BiblioAI Insight</Text>
+              <Text style={styles.headerTitle}>{t("member.ai_summary", "BiblioAI Insight")}</Text>
               <TouchableOpacity 
                 onPress={handleSpeech} 
                 style={[styles.audioBtn, isSpeaking && styles.audioBtnActive]}
@@ -92,7 +94,7 @@ export const AiSummaryModal: React.FC<AiSummaryModalProps> = ({ visible, onClose
             {loading ? (
               <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color="#4F8EF7" />
-                <Text style={styles.loadingText}>Đang phân tích dữ liệu sách...</Text>
+                <Text style={styles.loadingText}>{t("ai.analyzing_data")}</Text>
               </View>
             ) : summary ? (
               <Animated.View entering={FadeInUp.duration(400)}>
@@ -101,7 +103,7 @@ export const AiSummaryModal: React.FC<AiSummaryModalProps> = ({ visible, onClose
                 </Markdown>
               </Animated.View>
             ) : (
-              <Text style={styles.errorText}>Không thể tải bản tóm tắt lúc này.</Text>
+              <Text style={styles.errorText}>{t("ai.summary_error")}</Text>
             )}
           </ScrollView>
 

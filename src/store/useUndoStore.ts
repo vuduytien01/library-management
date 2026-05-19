@@ -1,4 +1,4 @@
-import { create } from 'zustand';
+import { create } from "zustand";
 
 interface UndoAction {
   id: string;
@@ -11,27 +11,27 @@ interface UndoAction {
 interface UndoStore {
   currentAction: UndoAction | null;
   isVisible: boolean;
-  
+
   /**
    * Triggers a new undoable action. Alias for queueAction.
    */
-  show: (action: Omit<UndoAction, 'id'>) => void;
-  
+  show: (action: Omit<UndoAction, "id">) => void;
+
   /**
    * Triggers a new undoable action.
    */
-  queueAction: (action: Omit<UndoAction, 'id'>) => void;
-  
+  queueAction: (action: Omit<UndoAction, "id">) => void;
+
   /**
    * Finalizes the action (commits it to the database/state).
    */
   commit: () => Promise<void>;
-  
+
   /**
    * Reverts the action and hides the notification.
    */
   undo: () => void;
-  
+
   /**
    * Force hides the notification without committing (use carefully).
    */
@@ -44,7 +44,7 @@ export const useUndoStore = create<UndoStore>((set, get) => ({
 
   queueAction: (action) => {
     const { currentAction, commit } = get();
-    
+
     // If there's already an action, commit it first (no await, fires in background)
     if (currentAction) {
       commit();
@@ -68,11 +68,11 @@ export const useUndoStore = create<UndoStore>((set, get) => ({
     if (state.isVisible) {
       set({ isVisible: false });
     }
-    
+
     try {
       await actionToCommit.onCommit();
     } catch (error) {
-      console.error('[UndoStore] Failed to commit:', error);
+      console.error("[UndoStore] Failed to commit:", error);
     } finally {
       // Only clear if no NEW action has been queued
       if (get().currentAction?.id === actionToCommit.id) {
@@ -87,17 +87,17 @@ export const useUndoStore = create<UndoStore>((set, get) => ({
 
     const actionToUndo = state.currentAction;
     const onUndoFn = actionToUndo.onUndo; // Local ref for TS narrowing
-    
+
     if (state.isVisible) {
       set({ isVisible: false });
     }
-    
+
     try {
       if (onUndoFn) {
         await onUndoFn();
       }
     } catch (error) {
-      console.error('[UndoStore] Failed to undo:', error);
+      console.error("[UndoStore] Failed to undo:", error);
     } finally {
       if (get().currentAction?.id === actionToUndo.id) {
         set({ currentAction: null });

@@ -6,11 +6,25 @@ const createQueryBuilder = () => {
     update: jest.fn(() => Promise.resolve({ data: null, error: null })),
     delete: jest.fn(() => Promise.resolve({ data: null, error: null })),
     eq: jest.fn(() => builder),
+    neq: jest.fn(() => builder),
+    gt: jest.fn(() => builder),
+    gte: jest.fn(() => builder),
+    lt: jest.fn(() => builder),
+    lte: jest.fn(() => builder),
+    like: jest.fn(() => builder),
+    ilike: jest.fn(() => builder),
+    is: jest.fn(() => builder),
+    in: jest.fn(() => builder),
+    not: jest.fn(() => builder),
+    filter: jest.fn(() => builder),
+    or: jest.fn(() => builder),
     order: jest.fn(() => builder),
+    limit: jest.fn(() => builder),
     single: jest.fn(() => Promise.resolve({ data: null, error: null })),
     maybeSingle: jest.fn(() => builder),
     range: jest.fn(() => builder),
     contains: jest.fn(() => builder),
+    textSearch: jest.fn(() => builder),
   };
 
   // Allow `await supabase.from(...).select('*')` in tests.
@@ -27,6 +41,12 @@ module.exports = {
     rpc: jest.fn(() =>
       Promise.resolve({ data: { success: true }, error: null }),
     ),
+    channel: jest.fn(() => ({
+      on: jest.fn().mockReturnThis(),
+      subscribe: jest.fn().mockReturnThis(),
+      unsubscribe: jest.fn().mockReturnThis(),
+    })),
+    removeChannel: jest.fn().mockResolvedValue(null),
     auth: {
       signInWithPassword: jest.fn(() =>
         Promise.resolve({ data: { session: null }, error: null }),

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -7,13 +7,13 @@ import {
   Animated,
   Dimensions,
   Platform,
-} from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { useUndoStore } from '../store/useUndoStore';
-import { useTranslation } from 'react-i18next';
-import { LinearGradient } from 'expo-linear-gradient';
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { useUndoStore } from "../store/useUndoStore";
+import { useTranslation } from "react-i18next";
+import { LinearGradient } from "expo-linear-gradient";
 
-const { width } = Dimensions.get('window');
+const { width } = Dimensions.get("window");
 const DEFAULT_DURATION = 5000;
 
 export const UndoNotification: React.FC = () => {
@@ -36,7 +36,7 @@ export const UndoNotification: React.FC = () => {
       // Progress bar animation
       progress.setValue(0);
       const duration = currentAction.duration || DEFAULT_DURATION;
-      
+
       Animated.timing(progress, {
         toValue: 1,
         duration: duration,
@@ -54,7 +54,7 @@ export const UndoNotification: React.FC = () => {
         duration: 300,
         useNativeDriver: true,
       }).start();
-      
+
       if (timerRef.current) {
         clearTimeout(timerRef.current);
       }
@@ -90,7 +90,7 @@ export const UndoNotification: React.FC = () => {
       ]}
     >
       <LinearGradient
-        colors={['#1A1F35', '#0F121D']}
+        colors={["#1A1F35", "#0F121D"]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 0 }}
         style={styles.content}
@@ -102,27 +102,27 @@ export const UndoNotification: React.FC = () => {
           <Text style={styles.message} numberOfLines={2}>
             {currentAction?.message}
           </Text>
-          <TouchableOpacity 
-            onPress={handleUndo} 
+          <TouchableOpacity
+            onPress={handleUndo}
             style={styles.undoButton}
             activeOpacity={0.7}
           >
-            <Text style={styles.undoText}>{t('common.undo', 'Hoàn tác')}</Text>
+            <Text style={styles.undoText}>{t("common.undo", "Hoàn tác")}</Text>
           </TouchableOpacity>
         </View>
-        
+
         {/* Progress Bar Container */}
         <View style={styles.progressContainer}>
-          <Animated.View 
+          <Animated.View
             style={[
               styles.progressBar,
               {
                 width: progress.interpolate({
                   inputRange: [0, 1],
-                  outputRange: ['0%', '100%'],
+                  outputRange: ["0%", "100%"],
                 }),
-              }
-            ]} 
+              },
+            ]}
           />
         </View>
       </LinearGradient>
@@ -132,12 +132,12 @@ export const UndoNotification: React.FC = () => {
 
 const styles = StyleSheet.create({
   container: {
-    position: 'absolute',
-    bottom: Platform.OS === 'ios' ? 40 : 20,
+    position: "absolute",
+    bottom: Platform.OS === "ios" ? 40 : 20,
     left: 20,
     right: 20,
     zIndex: 9999,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.3,
     shadowRadius: 15,
@@ -145,13 +145,13 @@ const styles = StyleSheet.create({
   },
   content: {
     borderRadius: 16,
-    overflow: 'hidden',
+    overflow: "hidden",
     borderWidth: 1,
-    borderColor: 'rgba(58, 117, 242, 0.2)',
+    borderColor: "rgba(58, 117, 242, 0.2)",
   },
   messageRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 16,
     paddingVertical: 14,
   },
@@ -160,30 +160,30 @@ const styles = StyleSheet.create({
   },
   message: {
     flex: 1,
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   undoButton: {
-    backgroundColor: 'rgba(58, 117, 242, 0.15)',
+    backgroundColor: "rgba(58, 117, 242, 0.15)",
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 8,
     marginLeft: 12,
   },
   undoText: {
-    color: '#4F8EF7',
+    color: "#4F8EF7",
     fontSize: 13,
-    fontWeight: 'bold',
-    textTransform: 'uppercase',
+    fontWeight: "bold",
+    textTransform: "uppercase",
   },
   progressContainer: {
     height: 3,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    width: '100%',
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    width: "100%",
   },
   progressBar: {
-    height: '100%',
-    backgroundColor: '#3A75F2',
+    height: "100%",
+    backgroundColor: "#3A75F2",
   },
 });

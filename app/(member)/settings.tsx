@@ -215,7 +215,10 @@ export default function MetadataSettings() {
             onPress={() => toggleAll(true)}
             style={styles.bulkBtn}
             accessibilityRole="button"
-            accessibilityLabel={t("settings.show_all_hint", "Hiện tất cả các trường thông tin")}
+            accessibilityLabel={t(
+              "settings.show_all_hint",
+              "Hiện tất cả các trường thông tin",
+            )}
           >
             <Text style={styles.bulkBtnText}>{t("settings.show_all")}</Text>
           </TouchableOpacity>
@@ -223,7 +226,10 @@ export default function MetadataSettings() {
             onPress={() => toggleAll(false)}
             style={styles.bulkBtn}
             accessibilityRole="button"
-            accessibilityLabel={t("settings.hide_all_hint", "Ẩn tất cả các trường thông tin")}
+            accessibilityLabel={t(
+              "settings.hide_all_hint",
+              "Ẩn tất cả các trường thông tin",
+            )}
           >
             <Text style={[styles.bulkBtnText, { color: "#FF6B6B" }]}>
               {t("settings.hide_all")}

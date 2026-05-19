@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -7,13 +7,13 @@ import {
   Animated,
   Dimensions,
   Platform,
-} from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { useUndoStore } from '../store/useUndoStore';
-import { useTranslation } from 'react-i18next';
-import { BlurView } from 'expo-blur';
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { useUndoStore } from "../store/useUndoStore";
+import { useTranslation } from "react-i18next";
+import { BlurView } from "expo-blur";
 
-const { width } = Dimensions.get('window');
+const { width } = Dimensions.get("window");
 
 export const UndoSnackbar = () => {
   const { t } = useTranslation();
@@ -21,7 +21,7 @@ export const UndoSnackbar = () => {
   const isVisible = useUndoStore((state) => state.isVisible);
   const undo = useUndoStore((state) => state.undo);
   const commit = useUndoStore((state) => state.commit);
-  
+
   const [shouldRender, setShouldRender] = useState(false);
   const [timeLeft, setTimeLeft] = useState(0);
   const slideAnim = useRef(new Animated.Value(120)).current;
@@ -33,7 +33,7 @@ export const UndoSnackbar = () => {
       if (!shouldRender) setShouldRender(true);
       const duration = currentAction.duration || 5000;
       setTimeLeft(duration / 1000);
-      
+
       // Animate In
       Animated.spring(slideAnim, {
         toValue: 0,
@@ -109,7 +109,7 @@ export const UndoSnackbar = () => {
                 {currentAction?.message}
               </Text>
               <Text style={styles.timerText}>
-                {t('common.auto_commit_in', { seconds: Math.ceil(timeLeft) })}
+                {t("common.auto_commit_in", { seconds: Math.ceil(timeLeft) })}
               </Text>
             </View>
           </View>
@@ -120,20 +120,20 @@ export const UndoSnackbar = () => {
             activeOpacity={0.7}
           >
             <Ionicons name="arrow-undo" size={16} color="#FFFFFF" />
-            <Text style={styles.undoText}>{t('common.undo')}</Text>
+            <Text style={styles.undoText}>{t("common.undo")}</Text>
           </TouchableOpacity>
         </View>
-        
-        <Animated.View 
+
+        <Animated.View
           style={[
-            styles.progressBar, 
-            { 
+            styles.progressBar,
+            {
               width: progressAnim.interpolate({
                 inputRange: [0, 1],
-                outputRange: ['0%', '100%']
-              }) 
-            }
-          ]} 
+                outputRange: ["0%", "100%"],
+              }),
+            },
+          ]}
         />
       </BlurView>
     </Animated.View>
@@ -142,12 +142,12 @@ export const UndoSnackbar = () => {
 
 const styles = StyleSheet.create({
   container: {
-    position: 'absolute',
-    bottom: Platform.OS === 'ios' ? 90 : 70,
+    position: "absolute",
+    bottom: Platform.OS === "ios" ? 90 : 70,
     left: 20,
     right: 20,
     zIndex: 9999,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.3,
     shadowRadius: 15,
@@ -155,21 +155,21 @@ const styles = StyleSheet.create({
   },
   blurWrapper: {
     borderRadius: 20,
-    overflow: 'hidden',
-    backgroundColor: 'rgba(23, 27, 43, 0.85)',
+    overflow: "hidden",
+    backgroundColor: "rgba(23, 27, 43, 0.85)",
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderColor: "rgba(255, 255, 255, 0.1)",
   },
   content: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     padding: 16,
     paddingBottom: 20,
   },
   leftContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     flex: 1,
     marginRight: 12,
   },
@@ -177,42 +177,42 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 12,
-    backgroundColor: 'rgba(58, 117, 242, 0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "rgba(58, 117, 242, 0.15)",
+    alignItems: "center",
+    justifyContent: "center",
     marginRight: 12,
   },
   message: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: "600",
     lineHeight: 18,
   },
   timerText: {
-    color: '#8A8F9E',
+    color: "#8A8F9E",
     fontSize: 10,
     marginTop: 2,
   },
   undoButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#3A75F2',
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#3A75F2",
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 12,
     gap: 6,
   },
   undoText: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 13,
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
   progressBar: {
-    position: 'absolute',
+    position: "absolute",
     bottom: 0,
     left: 0,
     height: 3,
-    backgroundColor: '#3A75F2',
+    backgroundColor: "#3A75F2",
     borderBottomLeftRadius: 20,
     borderBottomRightRadius: 20,
   },

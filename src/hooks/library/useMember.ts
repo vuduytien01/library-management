@@ -9,8 +9,8 @@ import { useAuthStore } from "../../store/useAuthStore";
 
 export function useMember() {
   const queryClient = useQueryClient();
-  const session = useAuthStore(state => state.session);
-  const profile = useAuthStore(state => state.profile);
+  const session = useAuthStore((state) => state.session);
+  const profile = useAuthStore((state) => state.profile);
   const userId = session?.user.id;
   const segments = useSegments();
   const router = useRouter();
@@ -27,6 +27,8 @@ export function useMember() {
       membersService.borrowBook(isbn, branchId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["books"] });
+      queryClient.invalidateQueries({ queryKey: ["book"] });
+      queryClient.invalidateQueries({ queryKey: ["branch_inventory"] });
       queryClient.invalidateQueries({ queryKey: ["my-borrows"] });
     },
   });
@@ -41,6 +43,8 @@ export function useMember() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["books"] });
+      queryClient.invalidateQueries({ queryKey: ["book"] });
+      queryClient.invalidateQueries({ queryKey: ["branch_inventory"] });
       queryClient.invalidateQueries({ queryKey: ["my-borrows"] });
     },
   });
@@ -169,42 +173,77 @@ export function useMember() {
     },
   });
 
-  const borrowsDomain = useMemo(() => ({
-    list: () => myBorrowsQuery,
-    borrow: borrowBook,
-    return: returnBook,
-    pay: payFine,
-  }), [myBorrowsQuery.data, myBorrowsQuery.status, borrowBook, returnBook, payFine]);
+  const borrowsDomain = useMemo(
+    () => ({
+      list: () => myBorrowsQuery,
+      borrow: borrowBook,
+      return: returnBook,
+      pay: payFine,
+    }),
+    [
+      myBorrowsQuery.data,
+      myBorrowsQuery.status,
+      borrowBook,
+      returnBook,
+      payFine,
+    ],
+  );
 
-  const gamificationDomain = useMemo(() => ({ 
-    getBadges: () => badgesQuery, 
-    getMyBadges: () => myBadgesQuery, 
-    getLeaderboard: (limit = 50) => ({
-      queryKey: ["leaderboard", limit],
-      queryFn: () => membersService.getLeaderboard(limit),
-    })
-  }), [badgesQuery.data, badgesQuery.status, myBadgesQuery.data, myBadgesQuery.status]);
+  const gamificationDomain = useMemo(
+    () => ({
+      getBadges: () => badgesQuery,
+      getMyBadges: () => myBadgesQuery,
+      getLeaderboard: (limit = 50) => ({
+        queryKey: ["leaderboard", limit],
+        queryFn: () => membersService.getLeaderboard(limit),
+      }),
+    }),
+    [
+      badgesQuery.data,
+      badgesQuery.status,
+      myBadgesQuery.data,
+      myBadgesQuery.status,
+    ],
+  );
 
-  const feedDomain = useMemo(() => ({ 
-    getCommunityFeed: () => communityFeedQuery, 
-    listNotifications: () => notificationsQuery 
-  }), [communityFeedQuery.data, communityFeedQuery.status, notificationsQuery.data, notificationsQuery.status]);
+  const feedDomain = useMemo(
+    () => ({
+      getNotifications: () => notificationsQuery,
+      getCommunityFeed: () => communityFeedQuery,
+    }),
+    [
+      communityFeedQuery.data,
+      communityFeedQuery.status,
+      notificationsQuery.data,
+      notificationsQuery.status,
+    ],
+  );
 
   const analyticsDomain = useMemo(() => {
     const wrap = (q: any) => () => q;
-    return { 
-      getGenres: wrap(genresQuery), 
-      getActivity: wrap(activityQuery), 
-      getMonthly: wrap(monthlyQuery) 
+    return {
+      getGenres: wrap(genresQuery),
+      getActivity: wrap(activityQuery),
+      getMonthly: wrap(monthlyQuery),
     };
-  }, [genresQuery.data, genresQuery.status, activityQuery.data, activityQuery.status, monthlyQuery.data, monthlyQuery.status]);
+  }, [
+    genresQuery.data,
+    genresQuery.status,
+    activityQuery.data,
+    activityQuery.status,
+    monthlyQuery.data,
+    monthlyQuery.status,
+  ]);
 
-  return useMemo(() => ({
-    borrows: borrowsDomain,
-    gamification: gamificationDomain,
-    feed: feedDomain,
-    analytics: analyticsDomain,
-  }), [borrowsDomain, gamificationDomain, feedDomain, analyticsDomain]);
+  return useMemo(
+    () => ({
+      borrows: borrowsDomain,
+      gamification: gamificationDomain,
+      feed: feedDomain,
+      analytics: analyticsDomain,
+    }),
+    [borrowsDomain, gamificationDomain, feedDomain, analyticsDomain],
+  );
 }
 
 export function useAnnotations(isbn: string) {
@@ -242,48 +281,63 @@ export function useAnnotations(isbn: string) {
     };
   }, [isbn, fetch]);
 
-  const addAnnotation = useCallback((
-    content: string,
-    selection?: string,
-    metadata?: any,
-    color?: string,
-    isPublic?: boolean,
-  ) =>
-    membersService.createAnnotation({
-      book_isbn: isbn,
-      content,
-      selection,
-      page_number: metadata?.page,
-      color,
-      is_public: isPublic,
-    }), [isbn]);
+  const addAnnotation = useCallback(
+    (
+      content: string,
+      selection?: string,
+      metadata?: any,
+      color?: string,
+      isPublic?: boolean,
+    ) =>
+      membersService.createAnnotation({
+        book_isbn: isbn,
+        content,
+        selection,
+        page_number: metadata?.page,
+        color,
+        is_public: isPublic,
+      }),
+    [isbn],
+  );
 
-  const removeAnnotation = useCallback(async (id: string) => {
-    setAnnotations(prev => prev.filter((a: Annotation) => a.id !== id));
-    try {
-      await membersService.deleteAnnotation(id);
-    } catch (error) {
-      fetch();
-      throw error;
-    }
-  }, [fetch]);
+  const removeAnnotation = useCallback(
+    async (id: string) => {
+      setAnnotations((prev) => prev.filter((a: Annotation) => a.id !== id));
+      try {
+        await membersService.deleteAnnotation(id);
+      } catch (error) {
+        fetch();
+        throw error;
+      }
+    },
+    [fetch],
+  );
 
-  return useMemo(() => ({
-    annotations,
-    isLoading,
-    addAnnotation,
-    removeAnnotation,
-    setAnnotations,
-    refresh: fetch,
-  }), [annotations, isLoading, addAnnotation, removeAnnotation, fetch]);
+  return useMemo(
+    () => ({
+      annotations,
+      isLoading,
+      addAnnotation,
+      removeAnnotation,
+      setAnnotations,
+      refresh: fetch,
+    }),
+    [annotations, isLoading, addAnnotation, removeAnnotation, fetch],
+  );
 }
 
-export function useInteractions(userId?: string, itemType?: "BOOK" | "AUDIOBOOK") {
+export function useInteractions(
+  userId?: string,
+  itemType?: "BOOK" | "AUDIOBOOK",
+) {
   return useQuery({
     queryKey: ["user_interactions", userId, itemType],
     enabled: !!userId,
     queryFn: async () => {
-      let query = supabase.from("user_interactions").select("*").eq("user_id", userId!);
+      let query = supabase
+        .from("user_interactions")
+        .select("*")
+        .eq("user_id", userId!);
       if (itemType) query = query.eq("item_type", itemType);
       const { data, error } = await query;
       if (error) throw error;
@@ -293,18 +347,21 @@ export function useInteractions(userId?: string, itemType?: "BOOK" | "AUDIOBOOK"
 }
 
 export function useSocial(itemId: string, itemType: "BOOK" | "AUDIOBOOK") {
-  const profile = useAuthStore(state => state.profile);
+  const profile = useAuthStore((state) => state.profile);
   const queryClient = useQueryClient();
 
   const interactionsQuery = useQuery({
     queryKey: ["user_interactions", profile?.id, itemId, itemType],
     enabled: !!profile?.id && !!itemId,
-    queryFn: () => membersService.getInteractions(profile!.id, itemId, itemType),
+    queryFn: () =>
+      membersService.getInteractions(profile!.id, itemId, itemType),
   });
 
   const interactions = interactionsQuery.data || [];
   const isLiked = interactions.some((i: any) => i.interaction_type === "LIKE");
-  const isBookmarked = interactions.some((i: any) => i.interaction_type === "BOOKMARK");
+  const isBookmarked = interactions.some(
+    (i: any) => i.interaction_type === "BOOKMARK",
+  );
 
   const toggle = useMutation({
     mutationFn: async (type: "LIKE" | "BOOKMARK") => {
@@ -315,7 +372,7 @@ export function useSocial(itemId: string, itemType: "BOOK" | "AUDIOBOOK") {
         itemId,
         itemType,
         type,
-        currentState
+        currentState,
       );
     },
     onSuccess: () => {
@@ -326,18 +383,21 @@ export function useSocial(itemId: string, itemType: "BOOK" | "AUDIOBOOK") {
   const toggleLike = useCallback(() => toggle.mutate("LIKE"), [toggle]);
   const toggleBookmark = useCallback(() => toggle.mutate("BOOKMARK"), [toggle]);
 
-  return useMemo(() => ({
-    isLiked,
-    isBookmarked,
-    toggleLike,
-    toggleBookmark,
-    isLoading: toggle.isPending,
-  }), [isLiked, isBookmarked, toggleLike, toggleBookmark, toggle.isPending]);
+  return useMemo(
+    () => ({
+      isLiked,
+      isBookmarked,
+      toggleLike,
+      toggleBookmark,
+      isLoading: toggle.isPending,
+    }),
+    [isLiked, isBookmarked, toggleLike, toggleBookmark, toggle.isPending],
+  );
 }
 
 export function useBookClubs() {
   const queryClient = useQueryClient();
-  const profile = useAuthStore(state => state.profile);
+  const profile = useAuthStore((state) => state.profile);
 
   const listQuery = useQuery({
     queryKey: ["book_clubs"],
@@ -367,15 +427,23 @@ export function useBookClubs() {
   });
 
   const create = useMutation({
-    mutationFn: async ({ name, description }: { name: string; description: string }) => {
+    mutationFn: async ({
+      name,
+      description,
+    }: {
+      name: string;
+      description: string;
+    }) => {
       const { data, error } = await supabase
         .from("book_clubs")
         .insert({ name, description, created_by: profile?.id })
         .select()
         .single();
       if (error) throw error;
-      
-      await supabase.from("book_club_members").insert({ club_id: data.id, user_id: profile?.id });
+
+      await supabase
+        .from("book_club_members")
+        .insert({ club_id: data.id, user_id: profile?.id });
       return data;
     },
     onSuccess: () => {
@@ -397,10 +465,13 @@ export function useBookClubs() {
     },
   });
 
-  return useMemo(() => ({
-    list: () => listQuery,
-    getMyClubs: () => myClubsQuery,
-    create,
-    join,
-  }), [listQuery, myClubsQuery, create, join]);
+  return useMemo(
+    () => ({
+      list: () => listQuery,
+      getMyClubs: () => myClubsQuery,
+      create,
+      join,
+    }),
+    [listQuery, myClubsQuery, create, join],
+  );
 }

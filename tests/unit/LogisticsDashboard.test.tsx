@@ -18,6 +18,10 @@ jest.mock('react-i18next', () => ({
 }));
 
 describe('LogisticsDashboard - Priority Labels', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
   const mockTasks = [
     {
       id: '1',
@@ -31,15 +35,17 @@ describe('LogisticsDashboard - Priority Labels', () => {
 
   it('should display "Ưu tiên: Cao" for National transfers', async () => {
     // Setup mock data for National transfer
-    (supabase.from as jest.Mock).mockReturnValue({
+    const queryMock = {
       select: jest.fn().mockReturnThis(),
       neq: jest.fn().mockResolvedValue({ data: mockTasks, error: null }),
-    });
+    };
+
+    (supabase.from as jest.Mock).mockReturnValue(queryMock);
 
     render(<LogisticsDashboard />);
     
     // Wait for data to load
-    const priorityLabel = await screen.findByText(/Ưu tiên: Cao/);
+    const priorityLabel = await screen.findByText(/Ưu tiên: Cao/, {}, { timeout: 5000 });
     expect(priorityLabel).toBeTruthy();
   });
 

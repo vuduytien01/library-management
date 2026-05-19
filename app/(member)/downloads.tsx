@@ -37,15 +37,15 @@ export default function DownloadsScreen() {
 
   const clearAll = async () => {
     const previousDownloads = [...downloads];
-    
+
     useUndoStore.getState().queueAction({
-      message: t('admin.clear_downloads_pending'),
+      message: t("admin.clear_downloads_pending"),
       onCommit: async () => {
         await membersService.clearAll();
       },
       onUndo: () => {
         setDownloads(previousDownloads);
-      }
+      },
     });
 
     setDownloads([]);
@@ -56,22 +56,24 @@ export default function DownloadsScreen() {
   }, []);
 
   const handleDelete = (id: string) => {
-    const fileToDelete = downloads.find(d => d.id === id);
+    const fileToDelete = downloads.find((d) => d.id === id);
     if (!fileToDelete) return;
 
     const previousDownloads = [...downloads];
-    
+
     useUndoStore.getState().queueAction({
-      message: t('admin.delete_download_pending', { title: fileToDelete.title }),
+      message: t("admin.delete_download_pending", {
+        title: fileToDelete.title,
+      }),
       onCommit: async () => {
         await membersService.deleteDownload(id);
       },
       onUndo: () => {
         setDownloads(previousDownloads);
-      }
+      },
     });
 
-    setDownloads(downloads.filter(d => d.id !== id));
+    setDownloads(downloads.filter((d) => d.id !== id));
   };
 
   const renderItem = ({ item }: { item: DownloadedFile }) => {
@@ -90,7 +92,10 @@ export default function DownloadsScreen() {
             {item.title}
           </Text>
           <Text style={styles.subtitle}>
-            {item.type} • {item.downloaded_at ? new Date(item.downloaded_at).toLocaleDateString("vi-VN") : "N/A"}
+            {item.type} •{" "}
+            {item.downloaded_at
+              ? new Date(item.downloaded_at).toLocaleDateString("vi-VN")
+              : "N/A"}
           </Text>
         </View>
 
@@ -111,7 +116,9 @@ export default function DownloadsScreen() {
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() =>
-            router.canGoBack() ? router.back() : router.push("/(member)/settings")
+            router.canGoBack()
+              ? router.back()
+              : router.push("/(member)/settings")
           }
           style={styles.backBtn}
           accessibilityLabel="Quay lại"
@@ -242,4 +249,3 @@ const styles = StyleSheet.create({
   },
   browseBtnText: { color: "white", fontSize: 14, fontWeight: "600" },
 });
-

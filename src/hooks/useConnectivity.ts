@@ -1,13 +1,13 @@
-import { useState, useEffect } from 'react';
-import NetInfo from '@react-native-community/netinfo';
-import { membersService } from '../features/members/member-service';
+import { useState, useEffect } from "react";
+import NetInfo from "@react-native-community/netinfo";
+import { membersService } from "../features/members/member-service";
 
 export function useConnectivity() {
   const [isOnline, setIsOnline] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
 
   useEffect(() => {
-    const unsubscribe = NetInfo.addEventListener(state => {
+    const unsubscribe = NetInfo.addEventListener((state) => {
       setIsOnline(!!state.isConnected && !!state.isInternetReachable);
     });
 
@@ -16,12 +16,12 @@ export function useConnectivity() {
 
   const triggerSync = async () => {
     if (!isOnline) return;
-    
+
     setIsSyncing(true);
     try {
       await membersService.processQueue();
     } catch (error) {
-      console.error('[Sync] Sync failed:', error);
+      console.error("[Sync] Sync failed:", error);
     } finally {
       setIsSyncing(false);
     }

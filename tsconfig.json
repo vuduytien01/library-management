@@ -1,0 +1,30 @@
+{
+  "extends": "expo/tsconfig.base.json",
+  "compilerOptions": {
+    "strict": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "jsx": "react-native",
+    "paths": {
+      "@/*": ["./*"]
+    }
+  },
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    ".expo/types/**/*.ts",
+    "expo-env.d.ts",
+    "nativewind-env.d.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "supabase",
+    "tests",
+    "scratch",
+    "dist",
+    "coverage",
+    "reports",
+    "src/features/admin/**",
+    "src/features/admin/components/LogisticsDashboard.tsx"
+  ]
+}

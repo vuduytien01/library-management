@@ -1,0 +1,60 @@
+name: Audiobook Metadata Scraper
+
+on:
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: 'Platform to scrape'
+        required: true
+        default: 'catalog'
+        type: choice
+        options:
+          - catalog
+          - fonos
+          - voizfm
+          - thuviensachnoi-catalog
+          - thuviensachnoi
+  repository_dispatch:
+    types: [trigger-scraper]
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Scraper
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+        run: |
+          PLATFORM="${{ github.event.inputs.platform || github.event.client_payload.platform || 'catalog' }}"
+          ARG="${{ github.event.client_payload.arg || '' }}"
+          echo "Starting scraper for: $PLATFORM with arg: $ARG"
+          npx tsx scratch/metadata-scraper/run-scraper.ts "$PLATFORM" "$ARG"
+
+      - name: Archive results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scraper-results
+          path: scratch/metadata-scraper/results/
+          retention-days: 7

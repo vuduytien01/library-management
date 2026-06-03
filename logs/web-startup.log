@@ -1,0 +1,12 @@
+
+> library-app@1.0.0 web
+> expo start --web
+
+env: load .env
+env: export EXPO_PUBLIC_SUPABASE_URL EXPO_PUBLIC_SUPABASE_ANON_KEY SUPABASE_ACCESS_TOKEN DATABASE_URL DIRECT_URL
+Starting project at C:\Users\tien2004\.gemini\antigravity\scratch\library-app
+Starting Metro Bundler
+Waiting on http://localhost:8081
+Logs for your project will appear below.
+Web node_modules\expo-router\entry.js ▓▓▓▓▓▓▓░░░░░░░░░ 45.0% (654/975)
+Web Bundled 3378ms node_modules\expo-router\entry.js (1488 modules)

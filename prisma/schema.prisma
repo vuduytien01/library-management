@@ -1,0 +1,108 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+}
+
+enum Role {
+  MEMBER
+  LIBRARIAN
+  ADMIN
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  VIETQR
+}
+
+model Profile {
+  id          String   @id @db.Uuid
+  fullName    String?  @map("full_name")
+  role        Role     @default(MEMBER)
+  isLocked    Boolean  @default(false) @map("is_locked")
+  maxBooks    Int      @default(5) @map("max_books")
+  trustedById String?  @map("trusted_by_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  borrows            BorrowRecord[]
+  supervisedAdmins   Profile[]      @relation("Supervision")
+  supervisor         Profile?       @relation("Supervision", fields: [trustedById], references: [id])
+
+  @@map("profiles")
+}
+
+model Book {
+  isbn            String   @id
+  title           String
+  author          String?
+  totalCopies     Int      @default(3) @map("total_copies")
+  availableCopies Int      @default(3) @map("available_copies")
+  coverUrl        String?  @map("cover_url")
+  googleData      Json?    @default("{}") @map("google_data")
+  category        String?
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  borrows         BorrowRecord[]
+
+  @@map("books")
+}
+
+model BorrowRecord {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bookId          String    @map("book_id")
+  userId          String    @map("user_id") @db.Uuid
+  borrowedAt      DateTime  @default(now()) @map("borrowed_at")
+  dueDate         DateTime  @map("due_date")
+  returnedAt      DateTime? @map("returned_at")
+  status          String    @default("BORROWED")
+  fineAmount      Decimal?  @map("fine_amount") @db.Decimal(10, 2)
+  rejectionReason String?   @map("rejection_reason")
+
+  book            Book          @relation(fields: [bookId], references: [isbn], onDelete: Cascade)
+  user            Profile       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions    Transaction[]
+
+  @@map("borrow_records")
+}
+
+model Transaction {
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  borrowRecordId String        @map("borrow_record_id") @db.Uuid
+  amount         Decimal       @db.Decimal(10, 2)
+  status         PaymentStatus @default(PENDING)
+  method         PaymentMethod @default(CASH)
+  hmacSignature  String?       @map("hmac_signature")
+  createdAt      DateTime      @default(now()) @map("created_at")
+
+  borrowRecord   BorrowRecord  @relation(fields: [borrowRecordId], references: [id], onDelete: Cascade)
+
+  @@map("transactions")
+}
+
+model SystemConfig {
+  key   String @id
+  value String
+
+  @@map("system_config")
+}
+
+model Notification {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  title     String
+  body      String
+  type      String
+  isRead    Boolean  @default(false) @map("is_read")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("notifications")
+}

@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "node",
+    "lib": ["ESNext", "DOM"],
+    "strict": false,
+    "baseUrl": ".",
+    "paths": {
+      "supabase": ["../../node_modules/@supabase/supabase-js"],
+      "zod": ["../../node_modules/zod/index.d.ts"],
+      "../_shared/*": ["./_shared/*"]
+    },
+    "types": [],
+    "allowImportingTsExtensions": true,
+    "ignoreDeprecations": "6.0",
+    "allowJs": true,
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  "include": ["**/*.ts", "deno.d.ts"]
+}

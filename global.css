@@ -1,0 +1,107 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    width: 100%;
+    min-width: 100%;
+    height: 100%;
+    min-height: 100%;
+    margin: 0;
+    padding: 0;
+    background: #0b0f1a;
+    overflow-x: hidden;
+  }
+
+  #root {
+    isolation: isolate;
+  }
+
+  #root > div {
+    width: 100%;
+    min-height: 100%;
+  }
+
+  body {
+    @apply bg-primary text-white;
+  }
+}
+
+/* Custom transitions and premium touches */
+.premium-card {
+  @apply bg-secondary rounded-2xl border border-gray-800 p-4;
+}
+
+.accent-button {
+  @apply bg-accent rounded-xl py-4 items-center justify-center;
+}
+
+/* Premium Animations */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.glass-morphism {
+  background: rgba(30, 37, 64, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.hover-premium {
+  @apply transition-all duration-300;
+}
+
+.hover-premium:hover {
+  @apply -translate-y-1 scale-[1.02];
+}
+
+/* Elegant and Compact Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0b0f1a;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #2a324d;
+  border-radius: 3px;
+  border: none;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3b82f6;
+}
+
+/* For Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #2a324d #0b0f1a;
+}
+
+*:focus {
+  outline: none !important;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  outline: none !important;
+}

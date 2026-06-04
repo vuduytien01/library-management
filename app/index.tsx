@@ -9,12 +9,16 @@ export default function Index() {
   const session = useAuthStore((state) => state.session);
   const profile = useAuthStore((state) => state.profile);
   const initialized = useAuthStore((state) => state.initialized);
+  const hasInjectedTestProfile =
+    process.env.NODE_ENV !== "production" &&
+    typeof window !== "undefined" &&
+    !!(window as any).__TEST_PROFILE;
 
   useEffect(() => {
     if (!initialized) return;
 
     const timeout = setTimeout(() => {
-      if (!session) {
+      if (!session && !hasInjectedTestProfile) {
         router.replace("/(auth)/login");
       } else if (profile) {
         router.replace(getHomeRouteForProfile(profile));
@@ -22,7 +26,7 @@ export default function Index() {
     }, 500); // Small delay for premium feel
 
     return () => clearTimeout(timeout);
-  }, [session, profile, initialized]);
+  }, [session, profile, initialized, hasInjectedTestProfile]);
 
   return (
     <View

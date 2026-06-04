@@ -453,7 +453,9 @@ export default function AdminSystem() {
           </TouchableOpacity>
         </View>
 
-        <View style={styles.logHeader}>
+        <View
+          style={[styles.logHeader, width < 600 && styles.logHeaderCompact]}
+        >
           <StatCard
             title={t("analytics.kpi_members")}
             value={statsData?.users || 0}
@@ -1558,6 +1560,9 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 12,
     marginBottom: 24,
+  },
+  logHeaderCompact: {
+    flexDirection: "column",
   },
   chartContainer: {
     backgroundColor: "#151929",

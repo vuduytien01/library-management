@@ -72,7 +72,14 @@ function RootLayoutContent() {
   const router = useRouter();
   const { i18n } = useTranslation();
   const lastY = useRef(0);
-  const hasBootstrappedProfile = !session || !!profile;
+  const injectedTestProfile =
+    process.env.NODE_ENV !== "production" &&
+    Platform.OS === "web" &&
+    typeof window !== "undefined"
+      ? (window as any).__TEST_PROFILE
+      : null;
+  const effectiveSession = session || (injectedTestProfile ? true : null);
+  const hasBootstrappedProfile = !effectiveSession || !!profile;
   const canShowRoutes = isReady && hasBootstrappedProfile;
   const replaceRoleRoute = (route: string) => {
     if (Platform.OS === "web" && route.startsWith("/(")) {
@@ -117,7 +124,7 @@ function RootLayoutContent() {
     const inAuthGroup = rootSegment === "(auth)";
     const inAuthCallback = rootSegment === "auth-callback";
 
-    if (!session) {
+    if (!effectiveSession) {
       // Not logged in -> force to auth group if not already there
       if (!inAuthGroup && !inAuthCallback) {
         router.replace("/(auth)/login");
@@ -155,7 +162,7 @@ function RootLayoutContent() {
   }, [
     isReady,
     canShowRoutes,
-    session,
+    effectiveSession,
     profile?.role,
     profile?.is_super_admin,
     segments,
